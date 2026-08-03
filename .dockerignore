@@ -1,0 +1,95 @@
+# ============================================
+#  Git
+# ============================================
+.git
+.gitignore
+.gitattributes
+
+# ============================================
+#  Python (backend)
+# ============================================
+backend/venv/
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# 测试文件
+backend/test_write.txt
+backend/tests/
+backend/**/test_*.py
+backend/**/**/test_*.py
+
+# 文档
+backend/README.md
+
+# ============================================
+#  Node (frontend)
+# ============================================
+frontend/node_modules/
+frontend/.vite/
+frontend/dist/
+frontend/.nuxt/
+frontend/.next/
+frontend/.cache/
+frontend/coverage/
+
+# 测试和 E2E
+frontend/e2e/
+frontend/playwright.config.js
+frontend/playwright-report/
+frontend/test-results/
+
+# Lint 配置
+frontend/.eslintcache
+frontend/.prettierrc.json
+frontend/eslint.config.js
+frontend/.oxlintrc.json
+
+# IDE
+frontend/.editorconfig
+
+# ============================================
+#  IDE / Editor
+# ============================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ============================================
+#  运行时数据（生产环境以 volume 挂载）
+# ============================================
+backend/data/
+backend/chroma_db/
+backend/logs/
+
+# ============================================
+#  环境变量（包含敏感信息）
+# ============================================
+.env
+.env.local
+.env.*.local
+
+# ============================================
+#  文档
+# ============================================
+README.md
+CLAUDE.md
+docs/
+*.md
+
+# ============================================
+#  Docker 相关
+# ============================================
+docker-compose.override.yml

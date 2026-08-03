@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+venv/
+.venv/
+env/
+
+# Environment files (contains secrets)
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Data & DB
+backend/data/
+backend/chroma_db/
+*.db
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Uploads
+backend/data/uploads/
