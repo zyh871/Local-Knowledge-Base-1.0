@@ -48,14 +48,21 @@
           </template>
         </div>
 
+        <!-- 最近对话标题 -->
+        <div v-if="chatHistory.length > 0" class="chat-section-header text-xs text-gray-400 px-3 py-2 font-medium tracking-wide">最近对话</div>
+
         <div
-          v-for="chat in chatHistory"
+          v-for="chat in sortedChatHistory"
           :key="chat.id"
-          :class="['chat-item group flex items-start gap-2 px-3 py-2.5 cursor-pointer mb-1', { active: chat.id === conversationId, selected: batchMode && selectedChatIds.has(chat.id) }]"
+          :class="['chat-item group flex items-center gap-2 px-3 py-2.5 cursor-pointer mb-1', { active: chat.id === conversationId, selected: batchMode && selectedChatIds.has(chat.id), pinned: isPinned(chat.id) }]"
           @click="batchMode ? toggleSelectChat(chat.id) : switchChat(chat.id)"
         >
           <input v-if="batchMode" type="checkbox" :checked="selectedChatIds.has(chat.id)" @click.stop="toggleSelectChat(chat.id)" class="mt-0.5 shrink-0" />
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="shrink-0 mt-0.5 chat-item-icon">
+          <svg v-if="isPinned(chat.id)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="shrink-0 chat-item-icon pinned-icon">
+            <path d="M12 17v5"/>
+            <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>
+          </svg>
+          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="shrink-0 chat-item-icon">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
           </svg>
           <div class="flex-1 min-w-0">
@@ -72,49 +79,123 @@
             </template>
             <template v-else>
               <div class="relative">
-                <p class="text-sm font-medium truncate chat-item-title">{{ chat.title }}</p>
+                <p class="text-sm truncate chat-item-title">{{ chat.title }}</p>
                 <div class="chat-tooltip">{{ chat.title }}</div>
               </div>
-              <p class="text-xs text-gray-400 truncate mt-0.5 chat-item-preview">{{ chat.preview }}</p>
             </template>
           </div>
-          <div v-if="editingChatId !== chat.id" class="flex items-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button @click.stop="startRename(chat)" class="p-1 chat-action-btn" aria-label="重命名" title="重命名">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-              </svg>
-            </button>
-            <button @click.stop="shareChat(chat.id)" class="p-1 chat-action-btn" aria-label="分享" title="生成分享链接">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="18" cy="5" r="3"/>
-                <circle cx="6" cy="12" r="3"/>
-                <circle cx="18" cy="19" r="3"/>
-                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
-                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
-              </svg>
-            </button>
-            <button @click.stop="exportChatImage(chat.id)" class="p-1 chat-action-btn" aria-label="导出长图" title="导出为长图">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                <circle cx="8.5" cy="8.5" r="1.5"/>
-                <polyline points="21 15 16 10 5 21"/>
-              </svg>
-            </button>
-            <button @click.stop="exportChat(chat.id)" class="p-1 chat-action-btn" aria-label="导出" title="导出为 Markdown">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-            </button>
-            <button @click.stop="deleteChat(chat.id)" class="p-1 chat-action-btn delete-chat-btn" aria-label="删除对话" title="删除">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M18 6L6 18M6 6l12 12"/>
+          <div v-if="editingChatId !== chat.id && !batchMode" class="flex items-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button @click.stop="openContextMenuAtButton($event, chat)" class="p-1 chat-menu-btn" aria-label="更多操作" title="更多操作">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="12" cy="5" r="2"/>
+                <circle cx="12" cy="12" r="2"/>
+                <circle cx="12" cy="19" r="2"/>
               </svg>
             </button>
           </div>
         </div>
+
+        <!-- Context Menu -->
+        <teleport to="body">
+          <div
+            v-if="contextMenu.visible"
+            class="context-menu"
+            :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }"
+            @click.stop
+          >
+            <div class="context-menu-item" @click="handleContextAction('rename')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 20h9"/>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+              </svg>
+              <span>重命名</span>
+            </div>
+            <div class="context-menu-item" @click="handleContextAction('pin')">
+              <svg v-if="!isPinned(contextMenu.chatId)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 17v5"/>
+                <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>
+              </svg>
+              <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 17v5"/>
+                <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>
+                <line x1="2" y1="2" x2="22" y2="22"/>
+              </svg>
+              <span>{{ isPinned(contextMenu.chatId) ? '取消置顶' : '置顶此对话' }}</span>
+            </div>
+            <div class="context-menu-item" @click="handleContextAction('share')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+                <polyline points="16 6 12 2 8 6"/>
+                <line x1="12" y1="2" x2="12" y2="15"/>
+              </svg>
+              <span>分享此对话</span>
+            </div>
+            <div class="context-menu-item has-submenu" @click="handleContextAction('move')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+              <span>移动到分组</span>
+              <svg class="submenu-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </div>
+            <div v-if="contextMenu.showGroupSubmenu" class="context-submenu" :style="{ top: contextMenu.y + 'px', left: (contextMenu.x + 200) + 'px' }">
+              <div v-if="groups.length === 0" class="context-menu-item disabled">
+                <span>暂无分组</span>
+              </div>
+              <div
+                v-for="g in groups"
+                :key="g"
+                class="context-menu-item"
+                @click="handleContextAction('move:' + g)"
+              >
+                <span>{{ g }}</span>
+              </div>
+              <div class="context-menu-item" @click="handleContextAction('move:__new__')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 5v14M5 12h14"/>
+                </svg>
+                <span>新建分组...</span>
+              </div>
+            </div>
+            <div class="context-menu-item has-submenu" @click="handleContextAction('export')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span>导出对话</span>
+              <svg class="submenu-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </div>
+            <div v-if="contextMenu.showExportSubmenu" class="context-submenu" :style="{ top: contextMenu.y + 'px', left: (contextMenu.x + 200) + 'px' }">
+              <div class="context-menu-item" @click="handleContextAction('export_md')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                </svg>
+                <span>Markdown 格式</span>
+              </div>
+              <div class="context-menu-item" @click="handleContextAction('export_image')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                  <circle cx="8.5" cy="8.5" r="1.5"/>
+                  <polyline points="21 15 16 10 5 21"/>
+                </svg>
+                <span>图片长图</span>
+              </div>
+            </div>
+            <div class="context-menu-divider"></div>
+            <div class="context-menu-item danger" @click="handleContextAction('delete')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
+              <span>删除此对话</span>
+            </div>
+          </div>
+        </teleport>
       </div>
 
       <div class="sidebar-footer px-3 py-4">
@@ -168,6 +249,115 @@
       </div>
     </aside>
 
+    <!-- Mobile sidebar drawer -->
+    <div v-if="sidebarOpen" class="mobile-sidebar-overlay lg:hidden" @click="sidebarOpen = false"></div>
+    <div v-if="sidebarOpen" class="mobile-sidebar-drawer lg:hidden">
+      <div class="sidebar-header p-5 flex items-center justify-between">
+        <h1 class="sidebar-title mb-0 font-semibold">知识库问答</h1>
+        <button @click="sidebarOpen = false" class="p-1.5 header-menu-btn" aria-label="关闭侧边栏">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div class="sidebar-content flex-1 overflow-y-auto" @click.stop>
+        <button @click="newChat; sidebarOpen = false" class="new-chat-btn flex items-center justify-center gap-2 w-full mx-5 mb-4 py-2 text-sm whitespace-nowrap">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          新对话
+        </button>
+
+        <div class="chat-list flex-1 overflow-y-auto px-3">
+          <div class="mb-3">
+            <div class="search-box relative">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="absolute left-2.5 top-1/2 -translate-y-1/2">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input
+                v-model="chatSearchQuery"
+                placeholder="搜索对话..."
+                class="w-full text-sm pl-8 pr-3 py-2 bg-transparent border border-current rounded-lg"
+              />
+            </div>
+          </div>
+
+          <div v-if="chatHistory.length > 0" class="chat-section-header text-xs text-gray-400 px-3 py-2 font-medium tracking-wide">最近对话</div>
+
+          <div
+            v-for="chat in sortedChatHistory"
+            :key="'mobile-' + chat.id"
+            :class="['chat-item group flex items-center gap-2 px-3 py-2.5 cursor-pointer mb-1', { active: chat.id === conversationId }]"
+            @click="switchChat(chat.id); sidebarOpen = false"
+          >
+            <svg v-if="isPinned(chat.id)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="shrink-0 chat-item-icon pinned-icon">
+              <path d="M12 17v5"/>
+              <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>
+            </svg>
+            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="shrink-0 chat-item-icon">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm truncate chat-item-title">{{ chat.title }}</p>
+            </div>
+            <div class="flex items-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button @click.stop="openContextMenuAtButton($event, chat)" class="p-1 chat-menu-btn" aria-label="更多操作">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="12" cy="5" r="2"/>
+                  <circle cx="12" cy="12" r="2"/>
+                  <circle cx="12" cy="19" r="2"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="sidebar-footer px-3 py-4">
+        <nav class="flex flex-col gap-1">
+          <button @click="toggleDocumentPanel; sidebarOpen = false" class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+            文档管理
+          </button>
+          <button @click="showProfilePanel = true; sidebarOpen = false" class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+            用户画像
+          </button>
+          <button @click="showLongTextPanel = true; sidebarOpen = false" class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            长文本工具
+          </button>
+          <button @click="toggleTheme" class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
+            <svg v-if="theme === 'light'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
+              <circle cx="12" cy="12" r="5"/>
+              <line x1="12" y1="1" x2="12" y2="3"/>
+              <line x1="12" y1="21" x2="12" y2="23"/>
+            </svg>
+            {{ theme === 'light' ? '深色模式' : '浅色模式' }}
+          </button>
+          <button @click="logout" class="sidebar-nav-btn logout flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+            退出登录
+          </button>
+        </nav>
+      </div>
+    </div>
+
     <!-- Main chat area -->
     <section class="chat-section flex-1 flex flex-col min-w-0">
       <!-- Backend connection warning -->
@@ -183,7 +373,7 @@
       <!-- Chat header -->
       <header class="chat-header flex items-center justify-between px-4 py-4 lg:px-6 shrink-0">
         <div class="flex items-center gap-3 min-w-0">
-          <button class="lg:hidden p-1.5 shrink-0 header-menu-btn" aria-label="打开侧边栏">
+          <button class="lg:hidden p-1.5 shrink-0 header-menu-btn" @click="sidebarOpen = !sidebarOpen" aria-label="打开侧边栏">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="3" y1="12" x2="21" y2="12"/>
               <line x1="3" y1="6" x2="21" y2="6"/>
@@ -698,7 +888,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -731,6 +921,17 @@ const chatHistory = ref([])
 const chatMessages = ref({})
 const isTempChat = ref(false)
 
+const contextMenu = reactive({ visible: false, x: 0, y: 0, chatId: '', showGroupSubmenu: false, showExportSubmenu: false })
+const pinnedChats = ref([])
+const groups = ref([])
+
+const sortedChatHistory = computed(() => {
+  const pinnedIds = new Set(pinnedChats.value)
+  const pinned = chatHistory.value.filter(c => pinnedIds.has(c.id))
+  const unpinned = chatHistory.value.filter(c => !pinnedIds.has(c.id))
+  return [...pinned, ...unpinned]
+})
+
 const profileForm = ref({ display_name: '', profession: '', language: 'auto' })
 const profileFormFactsText = ref('')
 const profileFormPrefsText = ref('')
@@ -743,6 +944,7 @@ const longtextLoading = ref(false)
 const longtextResult = ref('')
 const backendOffline = ref(false)
 let backendCheckTimer = null
+const sidebarOpen = ref(false)
 
 const exampleQuestions = ref([])
 const localExampleQuestions = ref([
@@ -1089,7 +1291,9 @@ function saveChatData() {
   const data = {
     conversationId: conversationId.value,
     chatHistory: chatHistory.value,
-    chatMessages: chatMessages.value
+    chatMessages: chatMessages.value,
+    pinnedChats: pinnedChats.value,
+    groups: groups.value
   }
   localStorage.setItem('chatData', JSON.stringify(data))
 }
@@ -1102,6 +1306,8 @@ function loadChatData() {
       chatMessages.value = data.chatMessages || {}
       chatHistory.value = data.chatHistory || []
       conversationId.value = data.conversationId || ''
+      pinnedChats.value = data.pinnedChats || []
+      groups.value = data.groups || []
 
       if (chatHistory.value.length === 0) {
         createTempChat()
@@ -1318,6 +1524,104 @@ function exportChat(chatId) {
   a.download = `${title.replace(/[<>:"/\\|?*]/g, '_')}.md`
   a.click()
   URL.revokeObjectURL(url)
+}
+
+function isPinned(chatId) {
+  return pinnedChats.value.includes(chatId)
+}
+
+function openContextMenu(event, chat) {
+  contextMenu.visible = false
+  contextMenu.chatId = chat.id
+  contextMenu.x = event.clientX
+  contextMenu.y = event.clientY
+  contextMenu.showGroupSubmenu = false
+  contextMenu.showExportSubmenu = false
+
+  const maxX = window.innerWidth - 220
+  const maxY = window.innerHeight - 280
+  if (contextMenu.x > maxX) contextMenu.x = maxX
+  if (contextMenu.y > maxY) contextMenu.y = maxY
+
+  contextMenu.visible = true
+  document.addEventListener('click', closeContextMenu, { once: true })
+  document.addEventListener('contextmenu', closeContextMenu, { once: true })
+}
+
+function openContextMenuAtButton(event, chat) {
+  contextMenu.visible = false
+  contextMenu.chatId = chat.id
+  const rect = event.currentTarget.getBoundingClientRect()
+  contextMenu.x = rect.right - 192
+  contextMenu.y = rect.bottom + 4
+  contextMenu.showGroupSubmenu = false
+  contextMenu.showExportSubmenu = false
+
+  const maxX = window.innerWidth - 210
+  const maxY = window.innerHeight - 300
+  if (contextMenu.x > maxX) contextMenu.x = maxX
+  if (contextMenu.x < 10) contextMenu.x = 10
+  if (contextMenu.y > maxY) contextMenu.y = maxY
+  if (contextMenu.y < 10) contextMenu.y = 10
+
+  contextMenu.visible = true
+  document.addEventListener('click', closeContextMenu, { once: true })
+}
+
+function closeContextMenu() {
+  contextMenu.visible = false
+  contextMenu.showGroupSubmenu = false
+  contextMenu.showExportSubmenu = false
+}
+
+async function handleContextAction(action) {
+  const chatId = contextMenu.chatId
+  if (action === 'export' && !action.startsWith('export_')) {
+    contextMenu.showExportSubmenu = !contextMenu.showExportSubmenu
+    contextMenu.showGroupSubmenu = false
+    return
+  }
+  closeContextMenu()
+  if (!chatId) return
+
+  if (action === 'rename') {
+    const chat = chatHistory.value.find(c => c.id === chatId)
+    if (chat) startRename(chat)
+  } else if (action === 'pin') {
+    const idx = pinnedChats.value.indexOf(chatId)
+    if (idx >= 0) pinnedChats.value.splice(idx, 1)
+    else pinnedChats.value.push(chatId)
+    saveChatData()
+  } else if (action === 'share') {
+    await shareChat(chatId)
+  } else if (action === 'export_md') {
+    exportChat(chatId)
+  } else if (action === 'export_image') {
+    exportChatImage(chatId)
+  } else if (action === 'delete') {
+    deleteChat(chatId)
+  } else if (action === 'move') {
+    contextMenu.showGroupSubmenu = true
+    contextMenu.showExportSubmenu = false
+    contextMenu.visible = true
+    return
+  } else if (action.startsWith('move:')) {
+    const group = action.slice(5)
+    const chat = chatHistory.value.find(c => c.id === chatId)
+    if (!chat) return
+    if (group === '__new__') {
+      const name = prompt('输入新分组名称：')
+      if (!name) return
+      if (!groups.value.includes(name)) {
+        groups.value.push(name)
+        groups.value.sort((a, b) => a.localeCompare(b, 'zh'))
+      }
+      chat.group = name
+    } else {
+      chat.group = group
+    }
+    saveChatData()
+  }
 }
 
 function handleImageSelect(event) {
@@ -2064,6 +2368,7 @@ onUnmounted(() => {
 .chat-item {
   border-radius: var(--radius-md);
   transition: background-color 0.15s;
+  position: relative;
 }
 
 .chat-item:hover {
@@ -2082,17 +2387,41 @@ onUnmounted(() => {
   color: var(--color-primary);
 }
 
+.chat-item.pinned {
+  background-color: var(--color-primary-lighter);
+}
+
+.chat-item.pinned .pinned-icon {
+  color: var(--color-primary);
+}
+
+.chat-item.pinned-indicator::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 16px;
+  background-color: var(--color-primary);
+  border-radius: 2px;
+}
+
 .chat-item-title {
   color: var(--color-text-primary);
   font-weight: 400;
+  font-size: 0.8125rem;
+  line-height: 1.4;
 }
 
 .chat-item.active .chat-item-title {
   font-weight: 500;
 }
 
-.chat-item-preview {
-  color: var(--color-text-tertiary);
+.chat-section-header {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  user-select: none;
 }
 
 .chat-tooltip {
@@ -2137,6 +2466,25 @@ onUnmounted(() => {
   color: var(--state-error);
 }
 
+.chat-menu-btn {
+  color: var(--color-text-tertiary);
+  border-radius: var(--radius-sm);
+  transition: color 0.15s, background-color 0.15s;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+.chat-menu-btn:hover {
+  color: var(--color-primary);
+  background-color: var(--color-border);
+}
+
 .sidebar-footer {
   border-top: 1px solid var(--color-border);
 }
@@ -2160,9 +2508,157 @@ onUnmounted(() => {
   color: var(--state-error);
 }
 
+/* ===== Context Menu ===== */
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06);
+  padding: 6px;
+  min-width: 200px;
+  animation: contextMenuFadeIn 0.12s ease-out;
+  font-size: 13px;
+  user-select: none;
+}
+
+@keyframes contextMenuFadeIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  color: var(--color-text-primary);
+  transition: background-color 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+
+.context-menu-item:hover {
+  background-color: var(--color-primary-lighter);
+  color: var(--color-primary);
+}
+
+.context-menu-item svg {
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+
+.context-menu-item:hover svg {
+  color: var(--color-primary);
+}
+
+.context-menu-item.danger {
+  color: var(--state-error);
+}
+
+.context-menu-item.danger:hover {
+  background-color: var(--state-error-bg);
+  color: var(--state-error);
+}
+
+.context-menu-item.danger svg {
+  color: var(--state-error);
+}
+
+.context-menu-item.danger:hover svg {
+  color: var(--state-error);
+}
+
+.context-menu-item.disabled {
+  color: var(--color-text-tertiary);
+  cursor: not-allowed;
+}
+
+.context-menu-item.disabled:hover {
+  background-color: transparent;
+  color: var(--color-text-tertiary);
+}
+
+.context-menu-item.has-submenu {
+  position: relative;
+}
+
+.context-menu-item .submenu-arrow {
+  margin-left: auto;
+  color: var(--color-text-tertiary);
+}
+
+.context-menu-divider {
+  height: 1px;
+  background-color: var(--color-border);
+  margin: 5px 4px;
+}
+
+.context-submenu {
+  position: fixed;
+  z-index: 1001;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06);
+  padding: 6px;
+  min-width: 180px;
+  animation: contextMenuFadeIn 0.12s ease-out;
+  font-size: 13px;
+}
+
+/* Pin indicator on chat items */
+.chat-item.pinned-indicator::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 16px;
+  background-color: var(--color-primary);
+  border-radius: 2px;
+}
+
 /* ===== Chat section ===== */
 .chat-section {
   background-color: var(--color-bg);
+}
+
+/* Mobile sidebar drawer */
+.mobile-sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 999;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.mobile-sidebar-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 280px;
+  max-width: 85vw;
+  background-color: var(--color-surface);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  animation: slideInLeft 0.2s ease-out;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.1);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
 }
 
 .chat-header {

@@ -165,7 +165,7 @@ TAVILY_API_KEY=your-tavily-key
 CORS_ORIGINS=http://localhost,http://localhost:80,http://localhost:5173,http://localhost:5174,http://127.0.0.1
 ```
 
----
+***
 
 ## 运行方式
 
@@ -200,7 +200,7 @@ npm run dev
 
 > Vite 开发服务器已配置代理：`/api/*` → `http://127.0.0.1:8000`，前端代码中请求 `/api/xxx` 会自动转发到后端。
 
----
+***
 
 ### 模式二：Docker Compose 一键部署（推荐完整部署）
 
@@ -233,15 +233,15 @@ docker compose logs -f frontend
 
 **5. 常用命令**
 
-| 操作 | 命令 |
-|------|------|
-| 启动 | `docker compose up -d` |
-| 停止 | `docker compose down` |
-| 重启 | `docker compose restart` |
-| 查看日志 | `docker compose logs -f [backend\|frontend]` |
-| 进入后端容器 | `docker compose exec backend sh` |
-| 重新构建 | `docker compose build --no-cache` |
-| 完全清理（含数据卷） | `docker compose down -v` |
+| 操作         | 命令                                           |
+| ---------- | -------------------------------------------- |
+| 启动         | `docker compose up -d`                       |
+| 停止         | `docker compose down`                        |
+| 重启         | `docker compose restart`                     |
+| 查看日志       | `docker compose logs -f [backend\|frontend]` |
+| 进入后端容器     | `docker compose exec backend sh`             |
+| 重新构建       | `docker compose build --no-cache`            |
+| 完全清理（含数据卷） | `docker compose down -v`                     |
 
 **数据持久化卷**
 
@@ -249,7 +249,7 @@ docker compose logs -f frontend
 - `rag-backend-chroma` — Chroma 向量数据库
 - `rag-backend-logs` — 结构化日志文件
 
----
+***
 
 ### 模式三：本地后端 + Docker 前端（混合部署）
 
@@ -314,7 +314,7 @@ docker stop rag-frontend
 docker rm rag-frontend
 ```
 
----
+***
 
 ### 模式四：单独 Docker 运行后端
 
@@ -434,11 +434,11 @@ data: {"type": "final", "content": {"answer": "...", "sources": [], "trace_id": 
 
 请求: `multipart/form-data`
 
-| 参数               | 类型   | 说明                                |
-| ---------------- | ---- | --------------------------------- |
-| file             | File | 图片文件（jpg/jpeg/png/bmp/tiff/webp/gif，最大 20MB） |
-| question         | string | 可选，针对图片的提问，为空时默认"请描述这张图片的内容"     |
-| conversation\_id | string | 可选，对话ID，用于记忆上下文                  |
+| 参数               | 类型     | 说明                                           |
+| ---------------- | ------ | -------------------------------------------- |
+| file             | File   | 图片文件（jpg/jpeg/png/bmp/tiff/webp/gif，最大 20MB） |
+| question         | string | 可选，针对图片的提问，为空时默认"请描述这张图片的内容"                 |
+| conversation\_id | string | 可选，对话ID，用于记忆上下文                              |
 
 响应: SSE 流 (`text/event-stream`)
 
@@ -588,12 +588,12 @@ data: {"type": "final", "content": {"answer": "...", "data_source": "vision", "i
 MODEL_BACKEND = "modelscope"
 ```
 
-| 后端             | 嵌入模型                   | LLM模型                             | 视觉模型                  | 说明             |
-| -------------- | ---------------------- | --------------------------------- | --------------------- | -------------- |
+| 后端             | 嵌入模型                   | LLM模型                             | 视觉模型                 | 说明             |
+| -------------- | ---------------------- | --------------------------------- | -------------------- | -------------- |
 | local          | TF-IDF (本地)            | MockLLM                           | 回退至文本LLM             | 无需外部依赖，纯本地运行   |
-| ollama         | nomic-embed-text       | llama3.2:3b                       | llama3.2-vision       | 需要安装Ollama     |
-| openai         | text-embedding-ada-002 | gpt-3.5-turbo                     | gpt-4o                | 需要OpenAI API密钥 |
-| baidu\_qianfan | Embedding-V1           | ERNIE-3.5-8K                      | ERNIE-4.0-8K-Lite     | 需要百度千帆API密钥    |
+| ollama         | nomic-embed-text       | llama3.2:3b                       | llama3.2-vision      | 需要安装Ollama     |
+| openai         | text-embedding-ada-002 | gpt-3.5-turbo                     | gpt-4o               | 需要OpenAI API密钥 |
+| baidu\_qianfan | Embedding-V1           | ERNIE-3.5-8K                      | ERNIE-4.0-8K-Lite    | 需要百度千帆API密钥    |
 | modelscope     | TF-IDF (本地)            | Qwen/Qwen3-Coder-30B-A3B-Instruct | Qwen/Qwen3.5-35B-A3B | 阿里ModelScope   |
 
 ### 文档配置
