@@ -12,7 +12,7 @@ import logging
 import os
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from langchain_classic.memory import ConversationBufferWindowMemory
@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 _memory_instances: Dict[str, ConversationBufferWindowMemory] = {}
 _meta: Dict[str, Dict[str, Any]] = {}
 _lock = threading.RLock()
+_conn: Optional[sqlite3.Connection] = None
 
 DB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
 os.makedirs(DB_DIR, exist_ok=True)
@@ -31,9 +32,12 @@ META_DB = os.path.join(DB_DIR, "conversations.db")
 
 
 def _meta_connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(META_DB, check_same_thread=False, timeout=10)
-    conn.row_factory = sqlite3.Row
-    return conn
+    """Return a single long-lived shared connection (protected by _lock)."""
+    global _conn
+    if _conn is None:
+        _conn = sqlite3.connect(META_DB, check_same_thread=False, timeout=30)
+        _conn.row_factory = sqlite3.Row
+    return _conn
 
 
 def _init_meta_db() -> None:
@@ -53,7 +57,20 @@ def _init_meta_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS conversation_messages (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                role            TEXT NOT NULL,
+                content         TEXT NOT NULL,
+                turn_index      INTEGER DEFAULT 0,
+                created_at      TEXT
+            )
+            """
+        )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user ON conversations(username)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_msg_conv ON conversation_messages(conversation_id, turn_index)")
         conn.commit()
 
 
@@ -61,7 +78,7 @@ _init_meta_db()
 
 
 def _now() -> str:
-    return datetime.utcnow().isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +103,22 @@ def get_memory(conversation_id: str, locked: bool = False):
 def save_context(conversation_id: str, user_text: str, ai_text: str, locked: bool = False) -> None:
     mem = get_memory(conversation_id, locked=locked)
     mem.save_context({"input": user_text}, {"output": ai_text})
+    now = _now()
+    with _lock, _meta_connect() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(MAX(turn_index), -1) AS idx FROM conversation_messages WHERE conversation_id = ?",
+            (conversation_id,),
+        ).fetchone()
+        next_idx = (row["idx"] if row and row["idx"] is not None else -1) + 1
+        conn.execute(
+            "INSERT INTO conversation_messages (conversation_id, role, content, turn_index, created_at) VALUES (?, ?, ?, ?, ?)",
+            (conversation_id, "user", user_text, next_idx, now),
+        )
+        conn.execute(
+            "INSERT INTO conversation_messages (conversation_id, role, content, turn_index, created_at) VALUES (?, ?, ?, ?, ?)",
+            (conversation_id, "assistant", ai_text, next_idx, now),
+        )
+        conn.commit()
 
 
 def load_history(conversation_id: str) -> List[Dict[str, str]]:
@@ -96,12 +129,30 @@ def load_history(conversation_id: str) -> List[Dict[str, str]]:
     for m in msgs:
         role = "user" if m.__class__.__name__.lower().startswith("human") else "assistant"
         out.append({"role": role, "content": getattr(m, "content", str(m))})
+    if out:
+        return out
+    with _lock, _meta_connect() as conn:
+        rows = conn.execute(
+            "SELECT role, content FROM conversation_messages WHERE conversation_id = ? ORDER BY turn_index, id",
+            (conversation_id,),
+        ).fetchall()
+    if rows:
+        for r in rows:
+            out.append({"role": r["role"], "content": r["content"]})
+            if len(out) >= 2 * config.CONVERSATION_WINDOW_SIZE:
+                break
+        for i in range(0, len(out), 2):
+            if i + 1 < len(out) and out[i]["role"] == "user" and out[i + 1]["role"] == "assistant":
+                mem.save_context({"input": out[i]["content"]}, {"output": out[i + 1]["content"]})
     return out
 
 
 def clear_memory(conversation_id: str):
     """Clear short-term memory for a specific conversation."""
     _memory_instances.pop(conversation_id, None)
+    with _lock, _meta_connect() as conn:
+        conn.execute("DELETE FROM conversation_messages WHERE conversation_id = ?", (conversation_id,))
+        conn.commit()
 
 
 def clear_all_memory():
@@ -181,21 +232,43 @@ def get_conversation(conversation_id: str) -> Dict[str, Any]:
     return meta
 
 
-def list_conversations(username: str = "", include_archived: bool = False) -> List[Dict[str, Any]]:
-    sql = "SELECT * FROM conversations"
-    params: List[Any] = []
+def verify_owner(conversation_id: str, username: str) -> bool:
+    """Check that `username` owns the conversation (or conversation has no owner yet)."""
+    if not conversation_id or not username:
+        return False
+    with _lock, _meta_connect() as conn:
+        row = conn.execute(
+            "SELECT username FROM conversations WHERE conversation_id = ?", (conversation_id,)
+        ).fetchone()
+    if row is None:
+        return True
+    owner = row["username"]
+    return not owner or owner == username
+
+
+def list_conversations(username: str = "", include_archived: bool = False,
+                      skip: int = 0, limit: int = 500) -> Dict[str, Any]:
+    where_params: List[Any] = []
     clauses: List[str] = []
     if username:
         clauses.append("username = ?")
-        params.append(username)
+        where_params.append(username)
     if not include_archived:
         clauses.append("archived = 0")
-    if clauses:
-        sql += " WHERE " + " AND ".join(clauses)
-    sql += " ORDER BY pinned DESC, updated_at DESC"
+    where_sql = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    count_sql = f"SELECT COUNT(*) AS cnt FROM conversations{where_sql}"
+    data_sql_prefix = f"SELECT * FROM conversations{where_sql}"
+    data_sql = f"{data_sql_prefix} ORDER BY pinned DESC, updated_at DESC LIMIT ? OFFSET ?"
     with _lock, _meta_connect() as conn:
-        rows = conn.execute(sql, params).fetchall()
-    return [_row_to_meta(r) for r in rows]
+        row = conn.execute(count_sql, where_params).fetchone()
+        total = row["cnt"] if row else 0
+        rows = conn.execute(data_sql, where_params + [limit, skip]).fetchall()
+    return {
+        "items": [_row_to_meta(r) for r in rows],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 def delete_conversation(conversation_id: str) -> bool:

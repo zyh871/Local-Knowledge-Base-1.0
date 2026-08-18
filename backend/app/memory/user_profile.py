@@ -28,7 +28,7 @@ import logging
 import os
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,7 @@ os.makedirs(DB_DIR, exist_ok=True)
 DB_PATH = os.path.join(DB_DIR, "user_profile.db")
 
 _lock = threading.RLock()
+_conn: Optional[sqlite3.Connection] = None
 
 DECAY_DAYS = 30
 MIN_WEIGHT = 0.1
@@ -45,9 +46,12 @@ MAX_FACTS = 50
 
 
 def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10)
-    conn.row_factory = sqlite3.Row
-    return conn
+    """Return a single long-lived shared connection (protected by _lock)."""
+    global _conn
+    if _conn is None:
+        _conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
+        _conn.row_factory = sqlite3.Row
+    return _conn
 
 
 def _init_schema() -> None:
@@ -73,11 +77,11 @@ _init_schema()
 
 
 def _now() -> str:
-    return datetime.utcnow().isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _now_timestamp() -> float:
-    return datetime.utcnow().timestamp()
+    return datetime.now(timezone.utc).timestamp()
 
 
 def _compute_weight(last_mentioned_timestamp: float, mentions: int = 1) -> float:

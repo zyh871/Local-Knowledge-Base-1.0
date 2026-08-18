@@ -17,6 +17,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from app.agents.intent_classifier import (
+    INTENT_AGENT,
     INTENT_CLARIFY,
     INTENT_FILE_QA,
     INTENT_GENERAL,
@@ -27,6 +28,7 @@ from app.agents.intent_classifier import (
     build_clarification_message,
 )
 from app.memory import get_profile_context, is_locked, load_history, save_context
+from app.memory.user_profile import get_profile
 from app.rag_chain import (
     RAGChain,
     format_docs,
@@ -292,8 +294,9 @@ def _handle_file_qa(question: str, chain: RAGChain, lang_instruction: str, histo
 
 
 def config_topk(n: int) -> int:
+    """Return the max between requested n and RETRIEVER_K so callers can overshoot."""
     from app import config as cfg
-    return getattr(cfg, "RETRIEVER_K", n)
+    return max(n, getattr(cfg, "RETRIEVER_K", n))
 
 
 def _handle_kb_qa(question: str, history: List[Dict[str, str]], chain: RAGChain, lang_instruction: str, profile_ctx: str, force_search: bool = False) -> Dict[str, Any]:
@@ -358,6 +361,36 @@ def _handle_kb_qa(question: str, history: List[Dict[str, str]], chain: RAGChain,
 # Public entry point
 # ---------------------------------------------------------------------------
 
+def _handle_agent(question: str, history: List[Dict[str, str]], lang_instruction: str) -> Dict[str, Any]:
+    """使用 Function Calling Agent 处理需要多步推理或工具调用的复杂问题。"""
+    from app.agents.function_calling import run_function_calling_agent
+
+    try:
+        result = run_function_calling_agent(question, history=history)
+        sources = []
+        for tc in result.get("tool_calls", []):
+            if tc.get("tool") == "web_search":
+                sources.append({"source": "tavily", "tool_call": tc["tool"]})
+            elif tc.get("tool") == "knowledge_query":
+                sources.append({"source": "knowledge_base", "tool_call": tc["tool"]})
+        return {
+            "answer": result["answer"],
+            "sources": sources,
+            "data_source": "agent",
+            "intent": INTENT_AGENT,
+            "tool_calls": result.get("tool_calls", []),
+            "iterations": result.get("iterations", 0),
+        }
+    except Exception as e:
+        logger.error(f"Agent handler failed: {e}", exc_info=True)
+        return {
+            "answer": f"Agent 处理失败，回退到普通问答: {e}",
+            "sources": [],
+            "data_source": "agent_error",
+            "intent": INTENT_AGENT,
+        }
+
+
 def route(
     chain: RAGChain,
     question: str,
@@ -370,7 +403,7 @@ def route(
     chain.ensure_initialized()
     locked = is_locked(conversation_id)
     history = load_history(conversation_id)
-    profile = __import__("app.memory.user_profile", fromlist=["get_profile"]).get_profile(username) if username else {}
+    profile = get_profile(username) if username else {}
     lang_instruction = _lang_instruction(profile.get("language", "auto"), intent_res.detected_language)
     profile_ctx = get_profile_context(username)
 
@@ -384,6 +417,8 @@ def route(
         result = _handle_long_text(question, lang_instruction)
     elif intent_res.intent == INTENT_FILE_QA:
         result = _handle_file_qa(question, chain, lang_instruction, history)
+    elif intent_res.intent == INTENT_AGENT:
+        result = _handle_agent(question, history, lang_instruction)
     else:
         result = _handle_kb_qa(question, history, chain, lang_instruction, profile_ctx, force_search=force_search)
 
@@ -414,9 +449,11 @@ def route_stream(
     chain.ensure_initialized()
     locked = is_locked(conversation_id)
     history = load_history(conversation_id)
-    profile = __import__("app.memory.user_profile", fromlist=["get_profile"]).get_profile(username) if username else {}
+    profile = get_profile(username) if username else {}
     lang_instruction = _lang_instruction(profile.get("language", "auto"), intent_res.detected_language)
     profile_ctx = get_profile_context(username)
+
+    sources: list = []
 
     if intent_res.intent in (INTENT_CLARIFY, INTENT_LONG_TEXT):
         result = route(chain, question, intent_res, username=username, conversation_id=conversation_id)
@@ -429,6 +466,18 @@ def route_stream(
         result = _handle_file_qa(question, chain, lang_instruction, history)
         yield {"type": "intent", "content": {"intent": result["intent"], "confidence": intent_res.confidence}}
         yield {"type": "sources", "content": result.get("sources", [])}
+        yield {"type": "chunk", "content": result["answer"]}
+        yield {"type": "final", "content": result}
+        if not intent_res.needs_clarification:
+            save_context(conversation_id, question, result["answer"], locked=locked)
+        return
+
+    if intent_res.intent == INTENT_AGENT:
+        result = _handle_agent(question, history, lang_instruction)
+        yield {"type": "intent", "content": {"intent": INTENT_AGENT, "confidence": intent_res.confidence}}
+        yield {"type": "sources", "content": result.get("sources", [])}
+        if result.get("tool_calls"):
+            yield {"type": "tool_calls", "content": result["tool_calls"]}
         yield {"type": "chunk", "content": result["answer"]}
         yield {"type": "final", "content": result}
         if not intent_res.needs_clarification:
@@ -553,7 +602,7 @@ def route_stream(
         "type": "final",
         "content": {
             "answer": full,
-            "sources": sources if 'sources' in locals() else [],
+            "sources": sources,
             "data_source": data_source,
             "intent": intent_res.intent,
             "intent_confidence": intent_res.confidence,

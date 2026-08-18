@@ -1,9 +1,10 @@
 """
-Agent package — intent classification and routing.
+Agent package — intent classification, routing, and multi-step agents.
 """
 
 from .intent_classifier import (
     ALL_INTENTS,
+    INTENT_AGENT,
     INTENT_CLARIFY,
     INTENT_FILE_QA,
     INTENT_GENERAL,
@@ -16,3 +17,6 @@ from .intent_classifier import (
     classify,
 )
 from .router import route, route_stream
+from .function_calling import run_function_calling_agent
+from .react_agent import run_react_agent
+from .plan_execute import run_plan_execute_agent

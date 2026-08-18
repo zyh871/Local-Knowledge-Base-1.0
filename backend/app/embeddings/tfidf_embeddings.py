@@ -90,8 +90,17 @@ class SimpleTFIDFEmbeddings:
         return self._project(vec)
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        self._build_vocab(texts)
-        self._ready = True
+        if not self._ready or not self.vocab:
+            self._build_vocab(texts)
+            self._ready = True
+        else:
+            new_tokens_list = [self._tokenize(t) for t in texts]
+            existing_texts_set = {" ".join(tokens) for tokens in self._tokenized_corpus}
+            to_add = [t for t, tokens in zip(texts, new_tokens_list) if " ".join(tokens) not in existing_texts_set]
+            if to_add:
+                self._build_vocab(
+                    [" ".join(t) for t in self._tokenized_corpus] + to_add
+                )
         return [self._embed(self._tokenize(t)) for t in texts]
 
     def embed_query(self, text: str) -> List[float]:
@@ -104,7 +113,8 @@ class SimpleTFIDFEmbeddings:
 
     def add_texts(self, texts: List[str]):
         if not self._ready:
-            self.embed_documents(texts)
+            self._build_vocab(texts)
+            self._ready = True
             return
         old_texts = [" ".join(tokens) for tokens in self._tokenized_corpus]
         self._build_vocab(old_texts + texts)

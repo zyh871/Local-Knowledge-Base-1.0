@@ -2,9 +2,18 @@
 Reciprocal Rank Fusion (RRF) implementation for hybrid search.
 """
 
+import hashlib
 from typing import List, Tuple
 
 from langchain_core.documents import Document
+
+
+def _doc_signature(doc: Document) -> str:
+    """Stable content-based document signature for dedup across retrievers."""
+    source = doc.metadata.get("source", "")
+    content = doc.page_content
+    raw = f"{source}|{len(content)}|{content[:200]}"
+    return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
 
 def rrf_fusion(
@@ -19,16 +28,16 @@ def rrf_fusion(
 
     # Process vector results
     for rank, (doc, _) in enumerate(vector_results):
-        doc_id = id(doc)
-        scores[doc_id] = scores.get(doc_id, 0) + 1.0 / (k + rank + 1)
-        doc_map[doc_id] = doc
+        sig = _doc_signature(doc)
+        scores[sig] = scores.get(sig, 0) + 1.0 / (k + rank + 1)
+        doc_map.setdefault(sig, doc)
 
     # Process BM25 results
     for rank, (doc, _) in enumerate(bm25_results):
-        doc_id = id(doc)
-        scores[doc_id] = scores.get(doc_id, 0) + 1.0 / (k + rank + 1)
-        doc_map[doc_id] = doc
+        sig = _doc_signature(doc)
+        scores[sig] = scores.get(sig, 0) + 1.0 / (k + rank + 1)
+        doc_map.setdefault(sig, doc)
 
     # Sort by score descending and return top N documents
-    sorted_ids = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
-    return [doc_map[doc_id] for doc_id in sorted_ids[:top_n]]
+    sorted_sigs = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
+    return [doc_map[sig] for sig in sorted_sigs[:top_n]]

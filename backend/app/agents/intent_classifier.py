@@ -33,6 +33,7 @@ INTENT_GENERAL = "general"
 INTENT_LONG_TEXT = "long_text"
 INTENT_FILE_QA = "file_qa"
 INTENT_TASK = "task"
+INTENT_AGENT = "agent"
 INTENT_CLARIFY = "clarification_needed"
 
 ALL_INTENTS = [
@@ -41,6 +42,7 @@ ALL_INTENTS = [
     INTENT_LONG_TEXT,
     INTENT_FILE_QA,
     INTENT_TASK,
+    INTENT_AGENT,
     INTENT_CLARIFY,
 ]
 
@@ -84,6 +86,12 @@ _TASK_PATTERNS = [
 _FILE_PATTERNS = [
     r"(?:文件|文档|资料|附件|上传的|我刚才上传|attachment|file|document)\s*[\w\u4e00-\u9fa5\-_.]+\.\w{1,5}",
     r"[\w\u4e00-\u9fa5\-_.]+\.(pdf|docx?|pptx?|txt|md|xlsx?|csv)\b",
+]
+_AGENT_PATTERNS = [
+    r"(?:先.*再.*然后|第一步|分步骤|逐步|多步)",
+    r"(?:调研|对比.*和|分析.*并.*总结|查.*再.*算)",
+    r"(?:使用工具|调用工具|用计算器|执行代码)",
+    r"(?:计算.*并.*搜索|查.*知识库.*再.*搜索)",
 ]
 _CLARIFY_PATTERNS = [
     r"^(那个|这个|它|他|她|上面|下面|之前|刚才)$",
@@ -129,17 +137,18 @@ def _needs_clarification(text: str, has_history: bool) -> bool:
 # ----------------------------- Public API ---------------------------------
 
 _CLASSIFY_PROMPT = """你是一个意图分类器。下面给出一段用户输入和它所处的对话上下文（可能为空）。
-请从以下 6 个意图中**只选一个**最匹配的输出：
+请从以下 7 个意图中**只选一个**最匹配的输出：
 
 1. kb_qa               — 询问本地知识库中的资料
 2. general             — 闲聊、问候、自我介绍、常识问答
 3. long_text           — 用户贴了一段很长的内容（>=800字），希望摘要/翻译/分析
 4. file_qa             — 用户引用了具体文件名（xxx.pdf / xxx.docx 等）询问其中内容
 5. task                — 明确要求 AI 写/翻译/总结/改写/生成内容
-6. clarification_needed — 信息明显不足，需要向用户反问澄清
+6. agent               — 需要多步推理、使用工具（计算器/代码执行/知识库查询/联网搜索）的复杂问题
+7. clarification_needed — 信息明显不足，需要向用户反问澄清
 
 输出严格的 JSON：
-{{"intent": "<one of the six>", "confidence": 0~1, "reason": "..."}}
+{{"intent": "<one of the seven>", "confidence": 0~1, "reason": "..."}}
 
 用户输入："""
 
@@ -191,6 +200,12 @@ def classify(
         res.intent = INTENT_FILE_QA
         res.confidence = 0.85
         res.reasons.append("matched filename pattern")
+        return res
+
+    if _match_any(_AGENT_PATTERNS, text):
+        res.intent = INTENT_AGENT
+        res.confidence = 0.85
+        res.reasons.append("matched multi-step / tool-use pattern")
         return res
 
     # 3. Clarification check

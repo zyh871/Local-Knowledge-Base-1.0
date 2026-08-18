@@ -40,6 +40,63 @@ from app.memory import get_memory
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+#  ModelScope HTTP Embeddings (module-level definition, shared instance)
+# ---------------------------------------------------------------------------
+
+_MODEL_SCOPE_EMBEDDINGS_INSTANCE = None
+_MSE_LOCK = threading.Lock()
+
+
+class ModelScopeHTTPEmbeddings:
+    """ModelScope HTTP embeddings with batched requests for efficiency."""
+
+    BATCH_SIZE = 32
+
+    def __init__(self, model_name: str, api_key: str, base_url: str):
+        import requests
+        self.model_name = model_name
+        self.api_key = api_key
+        self.base_url = base_url
+        self.headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        self._session = requests.Session()
+
+    def _request(self, inputs):
+        url = f"{self.base_url}/embeddings"
+        data = {"model": self.model_name, "input": inputs}
+        try:
+            resp = self._session.post(url, json=data, headers=self.headers, timeout=60)
+            resp.raise_for_status()
+            return resp.json().get("data", [])
+        except Exception as e:
+            logger.error(f"ModelScope embedding request failed: {e}")
+            return []
+
+    def embed_query(self, text: str):
+        items = self._request(text)
+        return items[0].get("embedding", []) if items else []
+
+    def embed_documents(self, texts):
+        results = []
+        for i in range(0, len(texts), self.BATCH_SIZE):
+            batch = texts[i:i + self.BATCH_SIZE]
+            items = self._request(batch)
+            if len(items) == len(batch):
+                results.extend(it.get("embedding", []) for it in items)
+            else:
+                for t in batch:
+                    results.append(self.embed_query(t))
+        return results
+
+    def __del__(self):
+        try:
+            self._session.close()
+        except Exception:
+            pass
+
+# ---------------------------------------------------------------------------
 #  Document loaders
 # ---------------------------------------------------------------------------
 # Per-format loaders (PDF/DOCX/PPTX/Excel/CSV/image) live in
@@ -108,41 +165,17 @@ def get_embeddings():
             sk=config.QIANFAN_SK,
         )
     elif backend == "modelscope":
+        global _MODEL_SCOPE_EMBEDDINGS_INSTANCE
         logger.info(f"使用 ModelScope HTTP 嵌入服务: {config.EMBEDDING_MODEL}")
-        import requests
-        
-        class ModelScopeHTTPEmbeddings:
-            def __init__(self, model_name, api_key):
-                self.model_name = model_name
-                self.api_key = api_key
-                self.base_url = config.MODELSCOPE_BASE_URL
-            
-            def embed_query(self, text):
-                url = f"{self.base_url}/embeddings"
-                headers = {
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json"
-                }
-                data = {
-                    "model": self.model_name,
-                    "input": text
-                }
-                try:
-                    response = requests.post(url, json=data, timeout=30)
-                    response.raise_for_status()
-                    result = response.json()
-                    return result.get("data", [{}])[0].get("embedding", [])
-                except Exception as e:
-                    logger.error(f"ModelScope embedding failed: {e}")
-                    return []
-            
-            def embed_documents(self, texts):
-                results = []
-                for text in texts:
-                    results.append(self.embed_query(text))
-                return results
-        
-        return ModelScopeHTTPEmbeddings(config.EMBEDDING_MODEL, config.MODELSCOPE_API_KEY)
+        if _MODEL_SCOPE_EMBEDDINGS_INSTANCE is None:
+            with _MSE_LOCK:
+                if _MODEL_SCOPE_EMBEDDINGS_INSTANCE is None:
+                    _MODEL_SCOPE_EMBEDDINGS_INSTANCE = ModelScopeHTTPEmbeddings(
+                        config.EMBEDDING_MODEL,
+                        config.MODELSCOPE_API_KEY,
+                        config.MODELSCOPE_BASE_URL,
+                    )
+        return _MODEL_SCOPE_EMBEDDINGS_INSTANCE
     elif backend == "local":
         logger.info(f"使用本地嵌入模型: {config.EMBEDDING_MODEL}")
         if config.EMBEDDING_MODEL == "local-tfidf":
@@ -338,7 +371,7 @@ def split_documents(docs: List[Document]) -> List[Document]:
 _vectorstore_instance: Optional[VectorRetriever] = None
 _bm25_retriever: Optional[BM25Retriever] = None
 _embeddings_instance = None
-_executor = ThreadPoolExecutor(max_workers=2)
+_executor = ThreadPoolExecutor(max_workers=max(8, (os.cpu_count() or 4) * 2))
 _instance_lock = threading.Lock()
 _TOKEN_CACHE_LOCK = threading.Lock()
 
@@ -385,7 +418,11 @@ def hybrid_search(question: str, k: Optional[int] = None) -> List[Document]:
 
 
 def add_documents_to_store(docs: List[Document]):
-    """Incrementally add documents to vectorstore and BM25."""
+    """Incrementally add documents to vectorstore and BM25.
+
+    Deduplicates by source filename — any existing chunks from a given source
+    are removed before the new chunks are written to prevent duplicates.
+    """
     global _vectorstore_instance, _bm25_retriever, _embeddings_instance
 
     if not docs:
@@ -397,9 +434,26 @@ def add_documents_to_store(docs: List[Document]):
     if not chunks:
         return
 
+    sources_to_remove: List[str] = []
+    seen_src = set()
+    for d in docs:
+        src = d.metadata.get("source", "")
+        if src and src not in seen_src:
+            seen_src.add(src)
+            sources_to_remove.append(src)
+    for s in sources_to_remove:
+        try:
+            vs.remove_by_source(s)
+        except Exception as e:
+            logger.warning(f"Pre-add remove of source {s} failed: {e}")
+        if _bm25_retriever:
+            try:
+                _bm25_retriever.remove_by_source(s)
+            except Exception as e:
+                logger.warning(f"Pre-add remove of BM25 source {s} failed: {e}")
+
     vs.add_documents(chunks)
 
-    # Add to BM25
     if _bm25_retriever:
         _bm25_retriever.add_documents(chunks)
     else:
@@ -489,15 +543,6 @@ def _parse_input(input_data):
     return str(input_data), "default"
 
 
-def _compute_relevance(question: str, context: str) -> float:
-    """Compute token-overlap relevance ratio (0.0-1.0)."""
-    q_tokens = set(tokenize(question))
-    c_tokens = set(tokenize(context))
-    if not q_tokens:
-        return 0.0
-    return len(q_tokens & c_tokens) / len(q_tokens)
-
-
 class RAGChain:
     """Unified RAG chain supporting both sync and streaming modes."""
 
@@ -534,30 +579,37 @@ class RAGChain:
             "chroma_exists": chroma_exists,
         }
 
-    def list_documents(self):
-        """Return a list of all documents in the vectorstore."""
+    def list_documents(self, limit: int = 500):
+        """Return distinct file entries from the vectorstore (capped)."""
         vs = get_vectorstore()
         if not vs or not vs.vectorstore:
             return []
         try:
-            all_data = vs.vectorstore.get()
+            all_data = vs.vectorstore.get(include=["metadatas"])
             metadatas = all_data.get("metadatas") or []
-            if metadatas:
-                seen = set()
-                docs = []
-                from app import config as _cfg
-                data_path = _cfg.DATA_PATH
-                for meta in metadatas:
-                    if not meta:
-                        continue
-                    source = meta.get("source", "unknown")
-                    if source not in seen:
-                        seen.add(source)
-                        file_path = os.path.join(data_path, os.path.basename(source))
-                        size = os.path.getsize(file_path) if os.path.isfile(file_path) else 0
-                        chunks = sum(1 for m in metadatas if m and m.get("source") == source)
-                        docs.append({"filename": source, "size": size, "chunks": chunks, **meta})
-                return docs
+            if not metadatas:
+                return []
+            from collections import Counter
+            chunk_counts = Counter(
+                (m.get("source", "unknown") if m else "unknown") for m in metadatas
+            )
+            seen = set()
+            docs = []
+            from app import config as _cfg
+            data_path = _cfg.DATA_PATH
+            for meta in metadatas:
+                if not meta:
+                    continue
+                source = meta.get("source", "unknown")
+                if source in seen:
+                    continue
+                seen.add(source)
+                file_path = os.path.join(data_path, os.path.basename(source))
+                size = os.path.getsize(file_path) if os.path.isfile(file_path) else 0
+                docs.append({"filename": source, "size": size, "chunks": chunk_counts[source]})
+                if len(docs) >= limit:
+                    break
+            return docs
         except Exception as e:
             logger.error(f"Failed to list documents: {e}", exc_info=True)
         return []
@@ -626,7 +678,7 @@ class RAGChain:
 
     async def ainvoke(self, input_data) -> dict:
         """Async RAG chain call (offloads sync work to thread pool)."""
-        return await asyncio.get_event_loop().run_in_executor(_executor, self.invoke, input_data)
+        return await asyncio.get_running_loop().run_in_executor(_executor, self.invoke, input_data)
 
     # ----- Intent-aware routing (new) ---------------------------------
 
@@ -672,7 +724,7 @@ class RAGChain:
         return _route(self, question, intent_res, username=username, conversation_id=conversation_id, force_search=force_search)
 
     async def aroute_invoke(self, input_data, username: str = "", conversation_id: str = "default") -> dict:
-        return await asyncio.get_event_loop().run_in_executor(
+        return await asyncio.get_running_loop().run_in_executor(
             _executor, lambda: self.route_invoke(input_data, username=username, conversation_id=conversation_id)
         )
 
@@ -735,12 +787,12 @@ class RAGChain:
             return self._get_answer_context(question)
 
         try:
-            ctx = await asyncio.get_event_loop().run_in_executor(_executor, _sync_retrieve)
+            ctx = await asyncio.get_running_loop().run_in_executor(_executor, _sync_retrieve)
             memory = get_memory(conversation_id)
             chat_history = memory.load_memory_variables({}).get("chat_history", "")
 
             if not ctx["has_relevant_context"]:
-                answer = await asyncio.get_event_loop().run_in_executor(
+                answer = await asyncio.get_running_loop().run_in_executor(
                     _executor, self._fallback_answer, question
                 )
                 memory.save_context({"question": question}, {"answer": answer})
@@ -774,7 +826,7 @@ class RAGChain:
         except Exception as e:
             logger.error(f"流式 RAG 链执行失败: {e}")
             try:
-                answer = await asyncio.get_event_loop().run_in_executor(
+                answer = await asyncio.get_running_loop().run_in_executor(
                     _executor, self._fallback_answer, question
                 )
                 yield {"type": "final", "content": {"answer": answer, "sources": [], "data_source": "llm_fallback"}}

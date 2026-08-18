@@ -14,6 +14,7 @@ from .conversation_memory import (
     load_history,
     save_context,
     upsert_conversation,
+    verify_owner,
 )
 from .long_term import get_profile_context, remember_turn
 from .user_profile import (

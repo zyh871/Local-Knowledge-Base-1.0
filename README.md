@@ -180,8 +180,6 @@ CORS_ORIGINS=http://localhost,http://localhost:80,http://localhost:5173,http://l
 ```bash
 cd backend
 venv\Scripts\activate
-
-# 绑定 127.0.0.1，仅本地访问
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 

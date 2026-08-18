@@ -22,13 +22,15 @@ import secrets
 import sys
 import time as _time
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 load_dotenv()
 
 import bcrypt
+from contextlib import asynccontextmanager
+
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -60,6 +62,7 @@ from app.memory import (
     remember_turn,
     update_profile,
     upsert_conversation,
+    verify_owner,
 )
 from app.rag_chain import (
     RAGChain,
@@ -134,7 +137,45 @@ limiter = Limiter(
 #  App
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="本地知识库问答系统", version="3.0.0")
+_rag_chain: Optional[RAGChain] = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理：启动预热、关闭清理。"""
+    global _rag_chain
+    logger.info("正在后台预热 RAG 链...")
+
+    def _init():
+        chain = get_rag_chain()
+        chain.ensure_initialized()
+        return chain
+
+    async def warmup():
+        global _rag_chain
+        try:
+            _rag_chain = await asyncio.get_running_loop().run_in_executor(None, _init)
+            logger.info("RAG 链预热完成")
+        except Exception as e:
+            logger.warning(f"RAG 链预热失败 (首次请求会延迟初始化): {e}")
+
+    asyncio.ensure_future(warmup())
+
+    yield
+
+    from app.rag_chain import _executor, _TOKEN_CACHE
+    from app.tools.web_search import close_client
+    logger.info("正在关闭应用，清理资源...")
+    if _executor:
+        _executor.shutdown(wait=False)
+        logger.info("线程池已关闭")
+    _TOKEN_CACHE.clear()
+    logger.info("缓存已清理")
+    await close_client()
+    logger.info("HTTP客户端已关闭")
+
+
+app = FastAPI(title="本地知识库问答系统", version="3.0.0", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -229,7 +270,7 @@ def authenticate_user(db: dict, username: str, password: str):
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=15))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, config.JWT_SECRET_KEY, algorithm=config.JWT_ALGORITHM)
 
@@ -291,31 +332,6 @@ async def read_users_me(current_user: User = Depends(get_current_active_user)):
 # ---------------------------------------------------------------------------
 #  RAG chain lifecycle
 # ---------------------------------------------------------------------------
-
-_rag_chain: Optional[RAGChain] = None
-
-
-@app.on_event("startup")
-async def startup_event():
-    global _rag_chain
-    logger.info("正在后台预热 RAG 链...")
-
-    def _init():
-        chain = get_rag_chain()
-        chain.ensure_initialized()
-        return chain
-
-    loop = asyncio.get_event_loop()
-
-    async def warmup():
-        global _rag_chain
-        try:
-            _rag_chain = await loop.run_in_executor(None, _init)
-            logger.info("RAG 链预热完成")
-        except Exception as e:
-            logger.warning(f"RAG 链预热失败 (首次请求会延迟初始化): {e}")
-
-    asyncio.ensure_future(warmup())
 
 
 def _get_chain() -> RAGChain:
@@ -728,17 +744,6 @@ async def upload_multiple_files(
     return {"results": results, "trace_id": trace_id}
 
 
-@app.get("/documents")
-async def list_documents(current_user: User = Depends(get_current_active_user)):
-    try:
-        chain = _get_chain()
-        docs = chain.list_documents()
-        return {"documents": docs}
-    except Exception as e:
-        logger.error(f"获取文档列表失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"获取文档列表失败: {e}")
-
-
 @app.delete("/documents/{file_name}")
 async def delete_document(
     file_name: str,
@@ -783,16 +788,32 @@ async def rebuild_vectorstore_endpoint(current_user: User = Depends(get_current_
 async def list_conversations_endpoint(
     current_user: User = Depends(get_current_active_user),
     search: Optional[str] = Query(None, description="搜索关键词"),
+    include_archived: bool = Query(False, description="包含已归档对话"),
+    skip: int = Query(0, ge=0, description="跳过条目数"),
+    limit: int = Query(100, ge=1, le=500, description="每页条数"),
 ):
     try:
-        conversations = list_conversations(username=current_user.username)
+        page = list_conversations(
+            username=current_user.username,
+            include_archived=include_archived,
+            skip=skip,
+            limit=limit,
+        )
+        conversations = page["items"]
         if search:
             search_lower = search.lower()
             conversations = [
                 c for c in conversations
                 if search_lower in c.get("title", "").lower() or search_lower in c.get("preview", "").lower()
             ]
-        return {"conversations": conversations}
+            page["total"] = len(conversations)
+            page["items"] = conversations
+        return {
+            "conversations": conversations,
+            "total": page["total"],
+            "skip": skip,
+            "limit": limit,
+        }
     except Exception as e:
         logger.error(f"获取对话列表失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"获取对话列表失败: {e}")
@@ -804,6 +825,8 @@ async def get_conversation_endpoint(
     current_user: User = Depends(get_current_active_user),
 ):
     try:
+        if not verify_owner(conversation_id, current_user.username):
+            raise HTTPException(status_code=403, detail="无权访问该对话")
         conv = get_conversation(conversation_id)
         if not conv:
             raise HTTPException(status_code=404, detail="对话不存在")
@@ -822,12 +845,20 @@ async def update_conversation_endpoint(
     current_user: User = Depends(get_current_active_user),
 ):
     try:
+        if not verify_owner(conversation_id, current_user.username):
+            raise HTTPException(status_code=403, detail="无权修改该对话")
         updated = upsert_conversation(
             conversation_id,
             username=current_user.username,
             title=update.title,
+            pinned=update.pinned,
+            locked=update.locked,
+            archived=update.archived,
+            bump_turn=False,
         )
         return {"conversation": updated}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"更新对话失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"更新对话失败: {e}")
@@ -839,6 +870,8 @@ async def delete_conversation_endpoint(
     current_user: User = Depends(get_current_active_user),
 ):
     try:
+        if not verify_owner(conversation_id, current_user.username):
+            raise HTTPException(status_code=403, detail="无权删除该对话")
         deleted = delete_conversation(conversation_id)
         if not deleted:
             raise HTTPException(status_code=404, detail="对话不存在")
@@ -859,6 +892,8 @@ async def batch_delete_conversations(
     try:
         deleted_count = 0
         for conv_id in req.conversation_ids:
+            if not verify_owner(conv_id, current_user.username):
+                continue
             if delete_conversation(conv_id):
                 deleted_count += 1
         logger.info(f"批量删除完成: 删除了 {deleted_count}/{len(req.conversation_ids)} 个对话")
@@ -874,6 +909,8 @@ async def export_conversation_endpoint(
     current_user: User = Depends(get_current_active_user),
 ):
     try:
+        if not verify_owner(conversation_id, current_user.username):
+            raise HTTPException(status_code=403, detail="无权导出该对话")
         conv = get_conversation(conversation_id)
         if not conv:
             raise HTTPException(status_code=404, detail="对话不存在")
@@ -891,6 +928,8 @@ async def clear_conversation_endpoint(
     current_user: User = Depends(get_current_active_user),
 ):
     try:
+        if not verify_owner(conversation_id, current_user.username):
+            raise HTTPException(status_code=403, detail="无权清空该对话")
         clear_memory(conversation_id)
         logger.info(f"清除对话记忆成功: {conversation_id}")
         return {"success": True}
@@ -982,7 +1021,7 @@ async def submit_feedback(
             "username": current_user.username,
             "rating": req.rating,
             "comment": req.comment,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         feedback_path = os.path.join(feedback_dir, f"{req.message_id}_{int(_time.time())}.json")
         with open(feedback_path, "w", encoding="utf-8") as f:
@@ -992,6 +1031,79 @@ async def submit_feedback(
     except Exception as e:
         logger.error(f"保存反馈失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"保存反馈失败: {e}")
+
+
+@app.get("/feedback/stats")
+async def get_feedback_stats(
+    current_user: User = Depends(get_current_active_user),
+):
+    """聚合统计反馈数据，用于 badcase 回流分析。"""
+    try:
+        feedback_dir = os.path.join(config.DATA_PATH, "feedback")
+        if not os.path.isdir(feedback_dir):
+            return {"total": 0, "ratings": {}, "recent": [], "badcase_count": 0}
+
+        ratings_dist: Dict[str, int] = {}
+        all_feedback: List[Dict[str, Any]] = []
+        for fn in os.listdir(feedback_dir):
+            if not fn.endswith(".json"):
+                continue
+            try:
+                with open(os.path.join(feedback_dir, fn), "r", encoding="utf-8") as f:
+                    item = json.load(f)
+                all_feedback.append(item)
+                rating_key = str(item.get("rating", "unknown"))
+                ratings_dist[rating_key] = ratings_dist.get(rating_key, 0) + 1
+            except Exception:
+                continue
+
+        all_feedback.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        badcase_count = sum(1 for fb in all_feedback if fb.get("rating", 0) <= 2)
+
+        return {
+            "total": len(all_feedback),
+            "ratings": ratings_dist,
+            "badcase_count": badcase_count,
+            "recent": all_feedback[:20],
+        }
+    except Exception as e:
+        logger.error(f"获取反馈统计失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取反馈统计失败: {e}")
+
+
+@app.get("/feedback/list")
+async def list_feedback(
+    current_user: User = Depends(get_current_active_user),
+    rating_filter: Optional[int] = Query(None, ge=1, le=5, description="按评分过滤"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+):
+    """分页查询反馈列表，支持按评分过滤。"""
+    try:
+        feedback_dir = os.path.join(config.DATA_PATH, "feedback")
+        if not os.path.isdir(feedback_dir):
+            return {"items": [], "total": 0, "skip": skip, "limit": limit}
+
+        items: List[Dict[str, Any]] = []
+        for fn in os.listdir(feedback_dir):
+            if not fn.endswith(".json"):
+                continue
+            try:
+                with open(os.path.join(feedback_dir, fn), "r", encoding="utf-8") as f:
+                    item = json.load(f)
+                if rating_filter is not None and item.get("rating") != rating_filter:
+                    continue
+                items.append(item)
+            except Exception:
+                continue
+
+        items.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        total = len(items)
+        page = items[skip : skip + limit]
+        return {"items": page, "total": total, "skip": skip, "limit": limit}
+    except Exception as e:
+        logger.error(f"查询反馈列表失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"查询反馈列表失败: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -1018,7 +1130,7 @@ async def get_example_questions(
         questions = []
         keywords = set()
         for doc in docs[:10]:
-            doc_name = doc.get("file", "")
+            doc_name = doc.get("filename", "") or doc.get("file", "")
             if doc_name:
                 questions.append(f"介绍一下 {doc_name} 的内容")
                 questions.append(f"{doc_name} 中有哪些重要信息？")
@@ -1051,27 +1163,216 @@ async def get_stats(current_user: User = Depends(get_current_active_user)):
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "本地知识库问答系统", "version": "3.0.0"}
+    details: Dict[str, Any] = {
+        "status": "ok",
+        "service": "本地知识库问答系统",
+        "version": "3.0.0",
+    }
+    # Chroma / vectorstore
+    try:
+        from app.rag_chain import get_vectorstore
+        vs = get_vectorstore()
+        try:
+            if vs and vs.vectorstore:
+                info = vs.vectorstore.get(include=[])
+                total = len(info.get("ids") or []) if info else 0
+                details["chroma"] = {"ok": True, "chunks": total}
+            else:
+                details["chroma"] = {"ok": True, "note": "not_initialized"}
+        except Exception as e:
+            details["chroma"] = {"ok": False, "error": str(e)}
+            details["status"] = "degraded"
+    except Exception as e:
+        details["chroma"] = {"ok": False, "error": str(e)}
+        details["status"] = "degraded"
+    # SQLite (conversations)
+    try:
+        from app.memory.conversation_memory import _meta_connect
+        conn = _meta_connect()
+        row = conn.execute("SELECT COUNT(*) AS cnt FROM conversations").fetchone()
+        details["sqlite_conversations"] = {"ok": True, "conversations": row["cnt"] if row else 0}
+    except Exception as e:
+        details["sqlite_conversations"] = {"ok": False, "error": str(e)}
+        details["status"] = "degraded"
+    # LLM (lightweight ping via an empty chat-like call)
+    try:
+        chain = _get_chain()
+        llm = getattr(chain, "_llm", None)
+        if llm:
+            llm_ok = True
+            try:
+                res = llm.invoke("ping")
+                if hasattr(res, "content"):
+                    _ = res.content
+            except Exception as e:
+                llm_ok = False
+                details["llm"] = {"ok": False, "error": str(e)}
+                details["status"] = "degraded"
+            if llm_ok:
+                details["llm"] = {"ok": True}
+        else:
+            details["llm"] = {"ok": True, "note": "deferred_init"}
+    except Exception as e:
+        details["llm"] = {"ok": False, "error": str(e)}
+        details["status"] = "degraded"
+    return details
 
 
 # ---------------------------------------------------------------------------
-#  Shutdown
+#  Agent Interaction Interface (for frontend integration)
 # ---------------------------------------------------------------------------
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Clean up resources on application shutdown."""
-    global _rag_chain
-    from app.rag_chain import _executor, _TOKEN_CACHE
-    from app.tools.web_search import close_client
-    logger.info("正在关闭应用，清理资源...")
-    if _executor:
-        _executor.shutdown(wait=False)
-        logger.info("线程池已关闭")
-    _TOKEN_CACHE.clear()
-    logger.info("缓存已清理")
-    await close_client()
-    logger.info("HTTP客户端已关闭")
+class AgentClassifyRequest(BaseModel):
+    question: str
+    conversation_id: Optional[str] = None
+
+
+class AgentClassifyResponse(BaseModel):
+    intent: str
+    confidence: float
+    needs_clarification: bool
+    clarification_prompt: str = ""
+    detected_language: str = "auto"
+    rewrite: str = ""
+    reasons: List[str] = []
+
+
+@app.get("/agent/intents")
+async def list_agent_intents(
+    current_user: User = Depends(get_current_active_user),
+):
+    """返回系统支持的所有意图类型及其描述，供前端构建交互界面。"""
+    intent_descriptions = {
+        "kb_qa": "知识库问答 — 基于本地知识库的 RAG 检索回答",
+        "general": "通用对话 — 日常闲聊、世界知识等无需检索的场景",
+        "long_text": "长文本处理 — 用户粘贴长文档进行摘要/翻译/问答",
+        "file_qa": "文件问答 — 针对特定上传文件的问答",
+        "task": "任务执行 — 写作、翻译、总结等显式任务请求",
+        "agent": "多步Agent — 需要分步骤、多工具协作的复杂任务",
+        "clarification_needed": "需要澄清 — 问题过于模糊，需要用户补充信息",
+    }
+    return {
+        "intents": [
+            {"name": name, "description": desc}
+            for name, desc in intent_descriptions.items()
+        ],
+        "data_sources": ["rag", "rag_search", "web_search", "llm", "long_text", "file_qa", "vision"],
+    }
+
+
+@app.post("/agent/classify", response_model=AgentClassifyResponse)
+@limiter.limit("60/minute")
+async def classify_question(
+    req: AgentClassifyRequest,
+    current_user: User = Depends(get_current_active_user),
+    request: Request = None,
+):
+    """对用户问题进行意图分类，不执行实际回答。用于前端预判路由。"""
+    trace_id = getattr(request.state, "trace_id", str(uuid.uuid4())[:8])
+    try:
+        question = (req.question or "").strip()
+        if not question:
+            raise HTTPException(status_code=400, detail="问题不能为空")
+        if len(question) > 2000:
+            raise HTTPException(status_code=400, detail="问题长度不能超过2000字符")
+
+        history = []
+        if req.conversation_id:
+            try:
+                history = load_history(req.conversation_id)
+            except Exception:
+                pass
+
+        intent_res = classify_intent(question, history)
+        return AgentClassifyResponse(
+            intent=intent_res.intent,
+            confidence=intent_res.confidence,
+            needs_clarification=intent_res.needs_clarification,
+            clarification_prompt=intent_res.clarification_prompt,
+            detected_language=intent_res.detected_language,
+            rewrite=intent_res.rewrite,
+            reasons=intent_res.reasons,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[trace_id={trace_id}] 意图分类失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"意图分类失败: {e}")
+
+
+@app.get("/agent/capabilities")
+async def get_agent_capabilities(
+    current_user: User = Depends(get_current_active_user),
+):
+    """返回系统当前可用的工具和能力列表。"""
+    capabilities: List[Dict[str, Any]] = [
+        {
+            "name": "knowledge_base",
+            "description": "本地知识库检索问答",
+            "endpoint": "/ask",
+            "methods": ["POST"],
+            "stream_endpoint": "/ask/stream",
+        },
+        {
+            "name": "web_search",
+            "description": "联网搜索实时信息",
+            "auto_trigger": True,
+            "trigger_keywords": ["最新", "新闻", "天气", "股价", "汇率"],
+        },
+        {
+            "name": "image_qa",
+            "description": "图片视觉问答（多模态）",
+            "endpoint": "/ask/image",
+            "methods": ["POST"],
+            "supported_formats": list(IMAGE_EXTENSIONS),
+        },
+        {
+            "name": "long_text",
+            "description": "长文本摘要/翻译/问答",
+            "endpoint": "/long-text",
+            "methods": ["POST"],
+            "operations": ["summary", "translate", "qa"],
+        },
+        {
+            "name": "document_management",
+            "description": "文档上传、删除、列表管理",
+            "endpoints": ["/upload", "/upload-multiple", "/documents", "/documents/{file_name}"],
+        },
+        {
+            "name": "conversation_management",
+            "description": "对话管理：创建、列表、删除、分享、导出",
+            "endpoints": ["/conversations", "/conversations/{id}", "/conversations/{id}/share"],
+        },
+    ]
+    return {
+        "capabilities": capabilities,
+        "model_backend": config.MODEL_BACKEND,
+        "llm_model": config.LLM_MODEL,
+        "vision_model": config.VISION_MODEL,
+        "embedding_model": config.EMBEDDING_MODEL,
+    }
+
+
+@app.get("/documents")
+async def list_documents_endpoint(
+    current_user: User = Depends(get_current_active_user),
+    skip: int = Query(0, ge=0, description="跳过条目数"),
+    limit: int = Query(100, ge=1, le=500, description="每页条数"),
+):
+    """分页查询知识库文档列表。"""
+    try:
+        chain = _get_chain()
+        all_docs = chain.list_documents(limit=skip + limit)
+        page = all_docs[skip : skip + limit]
+        return {
+            "documents": page,
+            "total": len(all_docs),
+            "skip": skip,
+            "limit": limit,
+        }
+    except Exception as e:
+        logger.error(f"获取文档列表失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取文档列表失败: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -1136,7 +1437,7 @@ async def create_share_link(
         "conversation_id": conversation_id,
         "owner": current_user.username,
         "title": conv.get("title") or "对话",
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "expires_at": expires_at,
         "data": payload,
     }
@@ -1153,7 +1454,8 @@ async def create_share_link(
 
 
 @app.get("/share/{token}")
-async def get_shared_conversation(token: str):
+@limiter.limit("30/minute")
+async def get_shared_conversation(token: str, request: Request = None):
     """公开访问：根据 token 获取只读对话内容（无需鉴权）。"""
     if not token or len(token) < 8 or len(token) > 128:
         raise HTTPException(status_code=400, detail="无效的分享令牌")

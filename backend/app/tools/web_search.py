@@ -192,15 +192,17 @@ def search(
     用于向后兼容，但推荐使用 search_async。
     """
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # 如果在异步环境中调用，创建新事件循环
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(asyncio.run, search_async(query, max_results, timeout, search_depth))
-                return future.result()
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop is not None and loop.is_running():
+            return asyncio.run_coroutine_threadsafe(
+                search_async(query, max_results, timeout, search_depth), loop
+            ).result()
         else:
-            return loop.run_until_complete(search_async(query, max_results, timeout, search_depth))
+            return asyncio.run(search_async(query, max_results, timeout, search_depth))
     except Exception as e:
         logger.error(f"Search wrapper failed: {e}")
         return {
@@ -269,7 +271,7 @@ QUESTION_STARTERS = [
 
 
 def should_search(query: str) -> bool:
-    """智能判断用户问题是否需要联网搜索。默认返回 True（默认开启搜索）。"""
+    """智能判断用户问题是否需要联网搜索。"""
     if not query:
         return False
     q = query.lower().strip()
@@ -283,4 +285,60 @@ def should_search(query: str) -> bool:
     if len(q) <= 15 and any(q.startswith(s) for s in QUESTION_STARTERS):
         return True
 
-    return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+#  Tool adapter — 将联网搜索封装为 BaseTool 接口
+# ---------------------------------------------------------------------------
+
+from typing import Any, Dict as _Dict
+
+from app.tools.base import BaseTool
+
+
+class WebSearchToolAdapter(BaseTool):
+    """联网搜索工具适配器，对接 ToolRegistry。"""
+
+    @property
+    def name(self) -> str:
+        return "web_search"
+
+    @property
+    def description(self) -> str:
+        return "联网搜索实时信息。当问题涉及最新新闻、天气、股价、汇率、当前事件等需要互联网数据时使用。返回搜索结果摘要和来源链接。"
+
+    @property
+    def parameters(self) -> _Dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "搜索关键词",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "最大返回结果数，默认5",
+                    "default": 5,
+                },
+            },
+            "required": ["query"],
+        }
+
+    def execute(self, query: str = "", max_results: int = 5, **kwargs) -> _Dict[str, Any]:
+        query = (query or "").strip()
+        if not query:
+            return {"success": False, "error": "搜索关键词不能为空"}
+
+        sr = search(query, max_results=max_results)
+        if not sr.get("success"):
+            return {"success": False, "error": sr.get("error", "搜索失败")}
+
+        context, sources = build_search_context(sr)
+        return {
+            "success": True,
+            "result": context,
+            "sources": sources,
+            "instant_answer": sr.get("instant_answer"),
+        }

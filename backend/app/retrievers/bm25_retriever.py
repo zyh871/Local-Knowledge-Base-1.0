@@ -43,13 +43,17 @@ class BM25Retriever:
         self._save_index()
 
     def add_documents(self, documents: List[Document]):
-        """Incremental add — rebuilds index."""
+        """Incremental add — append new tokens, rebuild BM25 only once."""
         if not documents:
             return
+        base_idx = len(self.documents)
         self.documents.extend(documents)
-        self._tokenized.extend(self._tokenize(d.page_content) for d in documents)
-        self.bm25 = BM25Okapi(self._tokenized)
-        for i, d in enumerate(self.documents):
+        new_tokenized = [self._tokenize(d.page_content) for d in documents]
+        self._tokenized.extend(new_tokenized)
+        if self._tokenized:
+            self.bm25 = BM25Okapi(self._tokenized)
+        for offset, d in enumerate(documents):
+            i = base_idx + offset
             self._doc_id_to_index[d.metadata.get("source", f"doc_{i}")] = i
         self._save_index()
 
