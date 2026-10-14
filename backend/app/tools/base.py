@@ -101,10 +101,14 @@ def _auto_register():
     """自动注册所有内置工具。"""
     from app.tools.calculator import CalculatorTool
     from app.tools.code_executor import CodeExecutorTool
+    from app.tools.file_write import FileWriteTool
     from app.tools.knowledge_query import KnowledgeQueryTool
 
     _registry.register(CalculatorTool())
     _registry.register(CodeExecutorTool())
+    # file_write 是**唯一**能产出文件的工具。此前只有配置里写着它的名字，
+    # 实现却不存在，于是「让 AI 写个文件」在工作流里没有任何通路。
+    _registry.register(FileWriteTool())
     _registry.register(KnowledgeQueryTool())
 
     try:

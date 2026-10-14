@@ -101,7 +101,7 @@ def run_react_agent(
     返回:
         {"answer": str, "tool_calls": [...], "iterations": int}
     """
-    from app.rag_chain import get_query_llm
+    from app.rag.providers import get_query_llm
 
     registry = get_registry()
     llm = get_query_llm()

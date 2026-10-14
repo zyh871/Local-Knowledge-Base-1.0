@@ -1,0 +1,202 @@
+{
+ "/agent/capabilities": [
+  "get"
+ ],
+ "/agent/classify": [
+  "post"
+ ],
+ "/agent/intents": [
+  "get"
+ ],
+ "/ask": [
+  "post"
+ ],
+ "/ask/image": [
+  "post"
+ ],
+ "/ask/stream": [
+  "post"
+ ],
+ "/conversations": [
+  "get"
+ ],
+ "/conversations/batch-delete": [
+  "post"
+ ],
+ "/conversations/{conversation_id}": [
+  "delete",
+  "get",
+  "put"
+ ],
+ "/conversations/{conversation_id}/clear": [
+  "post"
+ ],
+ "/conversations/{conversation_id}/export": [
+  "post"
+ ],
+ "/conversations/{conversation_id}/share": [
+  "post"
+ ],
+ "/documents": [
+  "get"
+ ],
+ "/documents/{file_name}": [
+  "delete"
+ ],
+ "/example-questions": [
+  "get"
+ ],
+ "/feedback": [
+  "post"
+ ],
+ "/feedback/list": [
+  "get"
+ ],
+ "/feedback/stats": [
+  "get"
+ ],
+ "/health": [
+  "get"
+ ],
+ "/long-text": [
+  "post"
+ ],
+ "/model-endpoints": [
+  "get",
+  "post"
+ ],
+ "/model-endpoints/test-connection": [
+  "post"
+ ],
+ "/model-endpoints/{endpoint_id}": [
+  "delete",
+  "patch"
+ ],
+ "/model-endpoints/{endpoint_id}/test": [
+  "post"
+ ],
+ "/models": [
+  "get"
+ ],
+ "/profile": [
+  "get",
+  "put"
+ ],
+ "/rebuild-vectorstore": [
+  "post"
+ ],
+ "/remember-turn": [
+  "post"
+ ],
+ "/share/{token}": [
+  "get"
+ ],
+ "/stats": [
+  "get"
+ ],
+ "/token": [
+  "post"
+ ],
+ "/upload": [
+  "post"
+ ],
+ "/upload-multiple": [
+  "post"
+ ],
+ "/users/me/": [
+  "get"
+ ],
+ "/workflow/capabilities": [
+  "get"
+ ],
+ "/workflow/files/{file_id}/download": [
+  "get"
+ ],
+ "/workflow/fs/list": [
+  "get"
+ ],
+ "/workflow/runs": [
+  "get",
+  "post"
+ ],
+ "/workflow/runs/{run_id}": [
+  "delete",
+  "get",
+  "patch"
+ ],
+ "/workflow/runs/{run_id}/approve": [
+  "post"
+ ],
+ "/workflow/runs/{run_id}/artifacts": [
+  "get"
+ ],
+ "/workflow/runs/{run_id}/cancel": [
+  "post"
+ ],
+ "/workflow/runs/{run_id}/clarify/answer": [
+  "post"
+ ],
+ "/workflow/runs/{run_id}/clarify/skip": [
+  "post"
+ ],
+ "/workflow/runs/{run_id}/clarify/stream": [
+  "post"
+ ],
+ "/workflow/runs/{run_id}/deliver": [
+  "post"
+ ],
+ "/workflow/runs/{run_id}/files": [
+  "get",
+  "post"
+ ],
+ "/workflow/runs/{run_id}/files/import": [
+  "post"
+ ],
+ "/workflow/runs/{run_id}/files/import-batch": [
+  "post"
+ ],
+ "/workflow/runs/{run_id}/files/{file_id}": [
+  "delete"
+ ],
+ "/workflow/runs/{run_id}/plan": [
+  "put"
+ ],
+ "/workflow/runs/{run_id}/plan/stream": [
+  "post"
+ ],
+ "/workflow/runs/{run_id}/reject": [
+  "post"
+ ],
+ "/workflow/runs/{run_id}/share": [
+  "post"
+ ],
+ "/workflow/runs/{run_id}/steps/{step_idx}/approve": [
+  "post"
+ ],
+ "/workflow/runs/{run_id}/steps/{step_idx}/execute": [
+  "post"
+ ],
+ "/workflow/runs/{run_id}/steps/{step_idx}/reject": [
+  "post"
+ ],
+ "/workflow/runs/{run_id}/steps/{step_idx}/retry": [
+  "post"
+ ],
+ "/workflow/runs/{run_id}/steps/{step_idx}/skip": [
+  "post"
+ ],
+ "/workflow/workspaces": [
+  "get",
+  "post"
+ ],
+ "/workflow/workspaces/{workspace_id}": [
+  "delete",
+  "patch"
+ ],
+ "/workflow/workspaces/{workspace_id}/folder": [
+  "put"
+ ],
+ "/workflow/workspaces/{workspace_id}/open": [
+  "post"
+ ]
+}

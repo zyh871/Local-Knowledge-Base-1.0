@@ -47,6 +47,29 @@ backend/
 | POST | `/ask/stream` | Bearer | 30/min | SSE 流式问答 |
 | POST | `/ask/image` | Bearer | 20/min | 图片视觉问答 (多模态) |
 
+> `/ask` 与 `/ask/stream` 支持可选的 `model` 字段（前端「模型切换」控件）：
+> 留空用服务端默认模型；取值必须命中白名单，否则返回 **400**（不静默回退）。
+> 响应体会回显 `model`（本次实际使用的模型）与 `truncated`（回答是否可能被截断）。
+
+### 模型
+
+| 方法 | 路径 | 认证 | 速率限制 | 说明 |
+|------|------|------|----------|------|
+| GET  | `/models` | Bearer | 全局 | 可选模型清单（含标签与默认项） |
+
+```json
+{
+  "models": [
+    { "id": "glm-4-flash", "label": "快速版 · 响应最快，适合日常问答", "is_default": true },
+    { "id": "glm-4-air",   "label": "均衡版 · 速度与质量兼顾",        "is_default": false }
+  ],
+  "default_model": "glm-4-flash",
+  "backend": "zhipu"
+}
+```
+
+候选清单由 `LLM_CHOICES` 配置（逗号分隔），留空则用后端内置候选。
+
 ### Agent 交互接口
 
 | 方法 | 路径 | 认证 | 速率限制 | 说明 |
@@ -137,24 +160,30 @@ backend/
 
 默认返回 `False`，仅命中触发词时返回 `True`。
 
-### ModelScope 嵌入 (`rag_chain.py`)
+### 嵌入模型 (`app/rag/embeddings.py`)
 
-`ModelScopeHTTPEmbeddings` 为模块级单例类：
-- `requests.Session` 连接池复用
-- `BATCH_SIZE=32` 批量嵌入请求
-- 双重检查锁定 (DCL) 单例模式
+- `OpenAICompatEmbeddings` —— 走 OpenAI 兼容协议的嵌入客户端（ModelScope / 智谱通用），
+  `requests.Session` 连接池复用、`BATCH_SIZE=32` 批量请求
+- `CachedEmbeddings` —— Redis 嵌入缓存包装，命中则不再调用模型；
+  键名用文本摘要（`digest()`），用户原文不进键空间
 
-### 文档去重 (`rag_chain.py`)
+> 旧版 `rag_chain.py` 已拆分删除：模型工厂在 `app/rag/providers.py`，
+> 向量库与混合检索在 `app/rag/vectorstore.py`，加载器在 `app/rag/loaders.py`。
+
+### 文档去重 (`app/rag/vectorstore.py`)
 
 `add_documents_to_store` 在写入前按 `source` 文件名批量删除向量库和 BM25 中的旧 chunk，防止同名文件重复入库。
+增删文档后必须清 `cache:retrieval:*`（`invalidate_retrieval_cache()`），否则会命中过期检索结果。
 
 ## 安全机制
 
 1. **JWT 认证**: 所有端点 (除 `/token`、`/health`、`/share/{token}`) 均需 Bearer Token
 2. **对话越权防护**: `verify_owner()` 检查对话所有者，非所有者返回 403
-3. **速率限制**: `slowapi` 按 IP 限流，敏感端点独立配置限额
+3. **速率限制**: 基于 Redis 的分布式固定窗口计数（多 worker 共享），敏感端点独立配置限额
+   （原 `slowapi` 进程内计数已移除）
 4. **分享链接限流**: `/share/{token}` 限制 30/min，防止暴力遍历
 5. **文件上传校验**: 扩展名白名单 + 大小限制 (50MB) + 路径穿越防护
+6. **模型白名单**: 请求里的 `model` 必须命中 `LLM_CHOICES`，防止任意模型名透传到上游 API
 6. **输入验证**: `QuestionRequest.validate_question()` 过滤 XSS 和超长输入
 
 ## 测试

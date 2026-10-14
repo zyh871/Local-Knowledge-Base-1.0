@@ -48,7 +48,7 @@ class KnowledgeQueryTool(BaseTool):
             return {"success": False, "error": "查询不能为空"}
 
         try:
-            from app.rag_chain import hybrid_search
+            from app.rag.vectorstore import hybrid_search
 
             docs = hybrid_search(query, k=top_k)
             if not docs:

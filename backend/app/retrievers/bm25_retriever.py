@@ -12,7 +12,7 @@ from langchain_core.documents import Document
 
 from rank_bm25 import BM25Okapi
 
-from app import config
+from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class BM25Retriever:
         self.documents: List[Document] = []
         self._tokenized: List[List[str]] = []
         self._doc_id_to_index: Dict[str, int] = {}  # source -> index offset
-        self.index_path = os.path.join(config.DATA_PATH, "bm25_index.pkl")
+        self.index_path = os.path.join(get_settings().paths.data_path, "bm25_index.pkl")
         self._load_index()
 
     def _tokenize(self, text: str) -> List[str]:

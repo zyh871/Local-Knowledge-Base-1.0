@@ -11,7 +11,7 @@
 - **联网搜索**: 基于 Tavily API 的实时网络搜索，知识库检索与联网搜索结果融合，支持强制联网模式
 - **图片问答**: 集成多模态视觉大模型（Qwen3.5-35B-A3B），支持上传图片直接进行看图问答、图表解读、内容描述
 - **用户认证**: JWT 身份认证系统，支持接口访问控制
-- **接口限流**: 基于 slowapi 的请求限流机制，防止恶意请求
+- **接口限流**: 基于 Redis 的分布式固定窗口计数，防止恶意请求
 - **容器化部署**: Docker + docker-compose 一键部署方案
 - **意图分类**: 内置意图分类器，支持不同类型问题的智能路由
 - **临时对话**: 支持临时对话创建，未发送消息时自动丢弃
@@ -21,15 +21,19 @@
 ### 后端
 
 - **框架**: FastAPI
+- **业务流程编排**: LangGraph（状态图，替代过程式 if/elif 分发）
+- **缓存 / 会话状态 / 限流 / 分布式锁**: Redis
+- **配置**: pydantic-settings
 - **RAG**: LangChain
 - **向量数据库**: Chroma
 - **嵌入模型**: TF-IDF (本地) / ModelScope Embeddings
-- **LLM**: MockLLM (本地) / ModelScope (Qwen系列)
-- **视觉模型**: Qwen/Qwen3.5-35B-A3B (图片问答多模态模型)
+- **LLM**: 智谱 `glm-4-flash`（默认） / MockLLM (本地测试)
+- **视觉模型**: 智谱 `glm-4v-flash`（图片问答多模态模型）
+- **嵌入模型**: 智谱 `embedding-3`（2048 维） / TF-IDF (本地备选)
 - **联网搜索**: Tavily Search API
 - **混合检索**: rank-bm25 (BM25算法) + RRF 融合
 - **认证**: JWT (python-jose)
-- **限流**: slowapi + limits
+- **限流**: 基于 Redis 的分布式固定窗口计数
 - **容器化**: Docker
 
 ### 前端
@@ -578,21 +582,25 @@ data: {"type": "final", "content": {"answer": "...", "data_source": "vision", "i
 
 ## 配置说明
 
-配置文件位于 `backend/app/config.py`，环境变量通过 `.env` 文件配置。
+配置文件位于 `backend/app/core/config.py`（pydantic-settings），环境变量通过 `.env` 文件配置。
 
 ### 模型后端配置
 
 ```python
-MODEL_BACKEND = "modelscope"
+MODEL_BACKEND = "zhipu"   # local / ollama / openai / baidu_qianfan / modelscope / zhipu / mock
 ```
 
-| 后端             | 嵌入模型                   | LLM模型                             | 视觉模型                 | 说明             |
-| -------------- | ---------------------- | --------------------------------- | -------------------- | -------------- |
-| local          | TF-IDF (本地)            | MockLLM                           | 回退至文本LLM             | 无需外部依赖，纯本地运行   |
-| ollama         | nomic-embed-text       | llama3.2:3b                       | llama3.2-vision      | 需要安装Ollama     |
-| openai         | text-embedding-ada-002 | gpt-3.5-turbo                     | gpt-4o               | 需要OpenAI API密钥 |
-| baidu\_qianfan | Embedding-V1           | ERNIE-3.5-8K                      | ERNIE-4.0-8K-Lite    | 需要百度千帆API密钥    |
-| modelscope     | TF-IDF (本地)            | Qwen/Qwen3-Coder-30B-A3B-Instruct | Qwen/Qwen3.5-35B-A3B | 阿里ModelScope   |
+| 后端             | 嵌入模型                   | LLM模型                             | 视觉模型                 | 说明                    |
+| -------------- | ---------------------- | --------------------------------- | -------------------- | --------------------- |
+| **zhipu**      | **embedding-3 (2048维)** | **glm-4-flash**                   | **glm-4v-flash**     | **默认。智谱 AI，OpenAI 兼容** |
+| local          | TF-IDF (本地)            | MockLLM                           | 回退至文本LLM             | 无需外部依赖，纯本地运行          |
+| ollama         | nomic-embed-text       | llama3.2:3b                       | llama3.2-vision      | 需要安装Ollama            |
+| openai         | text-embedding-ada-002 | gpt-3.5-turbo                     | gpt-4o               | 需要OpenAI API密钥        |
+| baidu\_qianfan | Embedding-V1           | ERNIE-3.5-8K                      | ERNIE-4.0-8K-Lite    | 需要百度千帆API密钥           |
+| modelscope     | TF-IDF (本地)            | Qwen/Qwen3-Coder-30B-A3B-Instruct | Qwen/Qwen3.5-35B-A3B | 阿里ModelScope          |
+
+> 切换**嵌入模型**后向量维度会变（TF-IDF 768 维 vs embedding-3 2048 维），
+> 必须调用 `POST /rebuild-vectorstore` 重建向量库，否则检索报维度错误。
 
 ### 文档配置
 
@@ -663,6 +671,127 @@ RETRIEVER_K = 3
 - 图片问答依赖 ModelScope 多模态模型（Qwen3.5-35B-A3B），local/mock 模式下回退至文本 LLM（无视觉能力）
 - 生产环境请修改JWT\_SECRET\_KEY为安全的随机字符串
 - ModelScope API密钥无效时，上传功能将使用本地TF-IDF嵌入模型
+
+## v4 架构（FastAPI + LangGraph + Redis）
+
+> 完整设计与迁移手册见 [`docs/REFACTOR_FASTAPI_LANGGRAPH_REDIS.md`](docs/REFACTOR_FASTAPI_LANGGRAPH_REDIS.md)。
+> **接口路径与 SSE 事件结构与 v3 完全一致，前端无需改动。**
+
+### 分层结构
+
+```
+app/
+├── main.py         仅组装：lifespan + 中间件 + 异常处理器 + 挂路由（约 250 行）
+├── api/v1/         HTTP 层：契约声明 + 转发（9 个路由模块）
+├── schemas/        Pydantic 请求/响应契约
+├── services/       用例编排（10 个 Service，与 HTTP 解耦）
+├── graph/          LangGraph 状态图：State / 节点 / 条件边 / Checkpointer
+├── rag/ tools/ agents/   领域能力
+├── memory/         对话记忆与用户画像
+├── utils/          文本与文件工具
+└── core/           配置 / 日志 / 异常 / 安全 / Redis / 依赖注入
+```
+
+依赖方向只能向下：`api → services → graph/repositories → rag/tools → core`。
+该规则由 `tests/unit/test_layering.py` 用静态 AST 分析强制检查。
+
+### 关键设计点
+
+- **业务流程是一张状态图**：`classify_intent` 是唯一分发点，条件边负责编排；
+  同步与流式两条路径共用同一张图，消除了 v3 中 `route()` / `route_stream()` 的双份维护。
+- **State 必须可 JSON 序列化**：检索结果以 `{page_content, metadata}` 字典形式入 State，
+  而非 LangChain `Document` 对象（否则 checkpointer 写入失败）。
+- **Redis 是增强项而非硬依赖**：连不上时自动降级为进程内实现并打 warning，
+  服务照常启动；生产环境应设 `REDIS_FALLBACK_TO_MEMORY=false` 以便故障时快速暴露。
+- **统一错误响应**：同时包含顶层 `detail`（兼容前端旧读取方式）与结构化
+  `error: {code, message, detail, trace_id}`。
+
+### 启动 Redis
+
+```bash
+# 推荐：Redis Stack（含 RediSearch，LangGraph Redis checkpoint 需要）
+docker compose up -d redis
+
+# 或独立启动
+docker run -d --name rag-redis -p 6379:6379 \
+  redis/redis-stack-server:7.4.0-v0 \
+  redis-stack-server --appendonly yes --maxmemory 1gb --maxmemory-policy allkeys-lru
+```
+
+未启动 Redis 时后端仍可运行（自动降级），但多 worker 下 限流 / 分布式锁 / 缓存 不共享。
+
+### 模型配置（智谱 AI）
+
+```env
+MODEL_BACKEND=zhipu
+ZHIPU_API_KEY=<你的 Key>
+ZHIPU_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+```
+
+默认模型：LLM `glm-4-flash` / Vision `glm-4v-flash` / Embedding `embedding-3`（2048 维）。
+可用 `LLM_MODEL` / `VISION_MODEL` / `EMBEDDING_MODEL` 单独覆盖。
+
+> ⚠️ **切换嵌入模型必须重建向量库**：`embedding-3` 是 2048 维，与本地 TF-IDF 的 768 维不兼容。
+> 调用 `POST /rebuild-vectorstore` 即可（会清空并重新索引 `data/` 下的全部文档）。
+
+### 对话中切换模型
+
+输入框上方右侧有**模型选择控件**，列出当前后端允许使用的模型，切换后**立即对后续请求生效**
+（选择会存到 `localStorage`，刷新后保留）。
+
+实现上是**无状态**的：`model` 随每个请求发送，服务端不保存会话偏好，也不影响其他用户。
+
+```bash
+# 列出可选模型
+GET /models
+→ { "models": [{"id":"glm-4-flash","label":"快速版…","is_default":true}, …],
+    "default_model": "glm-4-flash", "backend": "zhipu" }
+
+# 按请求指定模型（留空则用服务端默认）
+POST /ask        {"question":"…", "model":"glm-4-plus"}
+POST /ask/stream {"question":"…", "model":"glm-4-plus"}
+```
+
+- 候选清单由 `LLM_CHOICES` 配置（逗号分隔），留空则用后端内置候选
+- **只允许切换到白名单内的模型** —— 传入未登记的模型名返回 400，避免任意模型名透传到上游
+- 响应体会回显实际使用的模型与是否被截断：`{"model":"glm-4-plus","truncated":false}`
+
+### 回答不完整怎么排查
+
+见 [`docs/DIAGNOSIS_INCOMPLETE_ANSWER.md`](docs/DIAGNOSIS_INCOMPLETE_ANSWER.md)
+—— 区分「模型能力 / `max_tokens` / 流式中断 / 前端渲染」的判据与验证命令。
+
+一句话版：先看 `final.answer` 与页面是否一致（排除前端），
+再看日志里的 `finish_reason` —— `length` 是被 `max_tokens` 掐断，`stop` 是模型自己写完，
+**缺失**则说明流在中途断了（网络或上游内容风控）。
+
+```bash
+cd backend
+python scripts/diagnose_truncation.py     # 直接压模型，打印 finish_reason 与 token 用量
+```
+
+### 图执行参数
+
+```env
+GRAPH_CHECKPOINTER=memory   # redis | memory | none（redis 需 Redis Stack）
+GRAPH_MAX_AGENT_ITERATIONS=5
+GRAPH_RECURSION_LIMIT=25
+```
+
+状态图是**唯一**的业务编排实现（原过程式 router 已删除），构建失败即启动失败。
+
+### 测试
+
+```bash
+cd backend
+python -m pytest tests/ -q
+```
+
+测试覆盖：接口契约（OpenAPI 与 v3 基线逐条 diff）、SSE 事件序列、
+分层依赖、Redis 键规范与限流/锁原语、**会话消息与画像缓存的多 worker 一致性**、
+配置环境变量绑定、状态图路由与执行。
+
+---
 
 ## License
 

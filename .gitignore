@@ -44,3 +44,11 @@ logs/
 
 # Uploads
 backend/data/uploads/
+
+# 审计与验证产物（含未修复漏洞的利用细节，不入公开仓库）
+deliverables/
+.workbuddy/
+
+# 测试/验证临时目录
+_pytmp*/
+.verify-shots*/

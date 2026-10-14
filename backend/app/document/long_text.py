@@ -32,7 +32,7 @@ def chunk_text(text: str, chunk_size: int = 1500, overlap: int = 200) -> List[st
 
 def _llm_invoke(prompt: str) -> str:
     """Invoke the configured LLM and return plain text content."""
-    from app.rag_chain import get_llm
+    from app.rag.providers import get_llm
     llm = get_llm()
     if llm is None:
         return ""
@@ -130,7 +130,7 @@ def answer_against_text(text: str, question: str) -> str:
     relevant_idx = list(range(len(chunks)))
     if len(chunks) > 6:
         try:
-            from app.rag_chain import tokenize_query
+            from app.rag.vectorstore import tokenize_query
             q_tokens = set(tokenize_query(question))
             scored = []
             for i, c in enumerate(chunks):

@@ -31,6 +31,8 @@ import threading
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from app.repositories import session_cache
+
 logger = logging.getLogger(__name__)
 
 DB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
@@ -113,9 +115,19 @@ def _row_to_dict(row: Optional[sqlite3.Row]) -> Dict[str, Any]:
 
 
 def get_profile(username: str) -> Dict[str, Any]:
-    """Return the profile for `username`, creating an empty one if needed."""
+    """Return the profile for `username`, creating an empty one if needed.
+
+    Redis 热缓存：命中直接返回；未命中回源 SQLite 并回填。
+    **合成的空画像不写缓存** —— 它并未落库，缓存它会造成"库里没有、
+    缓存里却有"的不一致。
+    """
     if not username:
         return {}
+
+    cached = session_cache.get_cached_profile(username)
+    if cached is not None:
+        return cached
+
     with _lock, _connect() as conn:
         row = conn.execute("SELECT * FROM user_profile WHERE username = ?", (username,)).fetchone()
     if row is None:
@@ -129,7 +141,9 @@ def get_profile(username: str) -> Dict[str, Any]:
             "created_at": _now(),
             "updated_at": _now(),
         }
-    return _row_to_dict(row)
+    profile = _row_to_dict(row)
+    session_cache.set_cached_profile(username, profile)
+    return profile
 
 
 def update_profile(username: str, fields: Dict[str, Any]) -> Dict[str, Any]:
@@ -213,6 +227,8 @@ def update_profile(username: str, fields: Dict[str, Any]) -> Dict[str, Any]:
         )
         conn.commit()
 
+    # 画像变更后主动失效缓存（不等 TTL 自然过期，否则会读到旧画像）
+    session_cache.invalidate_profile(username)
     return get_profile(username)
 
 
@@ -220,6 +236,7 @@ def delete_profile(username: str) -> bool:
     with _lock, _connect() as conn:
         cur = conn.execute("DELETE FROM user_profile WHERE username = ?", (username,))
         conn.commit()
+    session_cache.invalidate_profile(username)
     return cur.rowcount > 0
 
 

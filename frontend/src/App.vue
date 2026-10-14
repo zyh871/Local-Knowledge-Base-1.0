@@ -5,25 +5,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { onMounted } from 'vue'
+import { useTheme } from './composables/useTheme'
 
-const theme = ref(localStorage.getItem('theme') || 'light')
-
-function toggleTheme() {
-  theme.value = theme.value === 'light' ? 'dark' : 'light'
-  localStorage.setItem('theme', theme.value)
-}
+// 主题状态收敛到 useTheme 单例：之前 App.vue 与 Chat.vue 各维护一份，
+// 在 /work 下会出现「AppLayout 切换了主题但视图没跟上」的分叉。
+const { theme, initTheme } = useTheme()
 
 onMounted(() => {
-  document.documentElement.classList.add(theme.value)
+  initTheme()
 })
-
-watch(theme, (newVal, oldVal) => {
-  document.documentElement.classList.remove(oldVal)
-  document.documentElement.classList.add(newVal)
-})
-
-defineExpose({ theme, toggleTheme })
 </script>
 
 <style>

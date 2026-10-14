@@ -14,9 +14,14 @@ import re
 from typing import List, Optional
 
 from app.memory import user_profile
-from app.rag_chain import get_llm, get_query_llm
 
 logger = logging.getLogger(__name__)
+
+# 注意：不要在此模块顶层 `from app.rag.providers import ...`。
+# app.rag 会 import app.memory（会话记忆），顶层导入会形成
+# app.rag <-> app.memory 的循环依赖（表现为
+# `ImportError: cannot import name 'get_llm' from partially initialized module`）。
+# LLM 仅在抽取事实时才需要，故改为函数内延迟导入。
 
 _NAME_PATTERNS = [
     r"(?:我叫|我的名字是|我是|叫我|you can call me|my name is|i am|i'm)\s*([A-Za-z\u4e00-\u9fa5]{2,20})",
@@ -86,6 +91,8 @@ _EXTRACTION_PROMPT = """你是一个用户画像抽取助手。请从下面这�
 def _llm_extract(text: str) -> dict:
     """Use the LLM to extract stable facts from one user turn."""
     try:
+        from app.rag.providers import get_llm, get_query_llm
+
         llm = get_query_llm() or get_llm()
     except Exception:
         logger.warning("LLM not available for fact extraction; falling back to rules.")

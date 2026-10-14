@@ -1,13 +1,23 @@
 """
-Per-conversation memory with windowed context + lock & metadata support.
+对话记忆：会话元数据 + 消息历史。
 
-Provides:
-  * short-term sliding window (k=5) for normal conversations
-  * lock mode: stops the window from being trimmed
-  * metadata: title, pinned flag, archived flag, owner username
+存储分层：
+    Redis  —— 热缓存（`session:{cid}:msgs` List），多 worker 共享
+    SQLite —— **真相源**（`data/conversations.db`）
+
+读取顺序：Redis 命中直接返回 → 未命中回源 SQLite 并回填缓存。
+Redis 不可用时全程直读 SQLite，功能不受影响（只是慢一点）。
+
+★ v4 变更：**移除了进程内的 `_memory_instances` 与
+`ConversationBufferWindowMemory`**。
+原因：它们在单 worker 下掩盖了多 worker 的一致性问题 ——
+`--workers 4` 时每个 worker 各持一份记忆，同一会话在不同 worker 上
+看到的历史不同。窗口裁剪已改由状态图的 `ingest` 节点统一负责
+（见 `app/graph/nodes/prepare.py`），此处只管存取。
 """
 
-import json
+from __future__ import annotations
+
 import logging
 import os
 import sqlite3
@@ -15,24 +25,22 @@ import threading
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from langchain_classic.memory import ConversationBufferWindowMemory
-
-from app import config
+from app.core.config import get_settings
+from app.repositories import session_cache
 
 logger = logging.getLogger(__name__)
 
-_memory_instances: Dict[str, ConversationBufferWindowMemory] = {}
 _meta: Dict[str, Dict[str, Any]] = {}
 _lock = threading.RLock()
 _conn: Optional[sqlite3.Connection] = None
 
-DB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
+DB_DIR = get_settings().paths.data_path
 os.makedirs(DB_DIR, exist_ok=True)
 META_DB = os.path.join(DB_DIR, "conversations.db")
 
 
 def _meta_connect() -> sqlite3.Connection:
-    """Return a single long-lived shared connection (protected by _lock)."""
+    """返回长连接（由 `_lock` 保护）。"""
     global _conn
     if _conn is None:
         _conn = sqlite3.connect(META_DB, check_same_thread=False, timeout=30)
@@ -70,7 +78,9 @@ def _init_meta_db() -> None:
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user ON conversations(username)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_msg_conv ON conversation_messages(conversation_id, turn_index)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_msg_conv ON conversation_messages(conversation_id, turn_index)"
+        )
         conn.commit()
 
 
@@ -82,86 +92,91 @@ def _now() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Memory core
+#  消息历史
 # ---------------------------------------------------------------------------
 
-def get_memory(conversation_id: str, locked: bool = False):
-    """Get or create conversation memory. `locked=True` disables window trimming."""
-    if conversation_id not in _memory_instances:
-        _memory_instances[conversation_id] = ConversationBufferWindowMemory(
-            k=10 if locked else config.CONVERSATION_WINDOW_SIZE,
-            memory_key="chat_history",
-            return_messages=True,
-        )
-    elif locked:
-        existing = _memory_instances[conversation_id]
-        if getattr(existing, "k", None) != 10:
-            existing.k = 10
-    return _memory_instances[conversation_id]
 
+def save_context(
+    conversation_id: str, user_text: str, ai_text: str, locked: bool = False
+) -> None:
+    """写入一轮问答。
 
-def save_context(conversation_id: str, user_text: str, ai_text: str, locked: bool = False) -> None:
-    mem = get_memory(conversation_id, locked=locked)
-    mem.save_context({"input": user_text}, {"output": ai_text})
+    先落 SQLite（真相源），再更新 Redis 缓存。顺序是有意的：
+    若缓存写失败，数据仍然正确，只是下次读慢一点；反之若先写缓存、
+    后写库失败，就会出现"缓存有、库没有"的幻觉数据。
+    """
     now = _now()
     with _lock, _meta_connect() as conn:
         row = conn.execute(
-            "SELECT COALESCE(MAX(turn_index), -1) AS idx FROM conversation_messages WHERE conversation_id = ?",
+            "SELECT COALESCE(MAX(turn_index), -1) AS idx FROM conversation_messages "
+            "WHERE conversation_id = ?",
             (conversation_id,),
         ).fetchone()
         next_idx = (row["idx"] if row and row["idx"] is not None else -1) + 1
         conn.execute(
-            "INSERT INTO conversation_messages (conversation_id, role, content, turn_index, created_at) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO conversation_messages "
+            "(conversation_id, role, content, turn_index, created_at) VALUES (?, ?, ?, ?, ?)",
             (conversation_id, "user", user_text, next_idx, now),
         )
         conn.execute(
-            "INSERT INTO conversation_messages (conversation_id, role, content, turn_index, created_at) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO conversation_messages "
+            "(conversation_id, role, content, turn_index, created_at) VALUES (?, ?, ?, ?, ?)",
             (conversation_id, "assistant", ai_text, next_idx, now),
         )
         conn.commit()
 
+    session_cache.append_messages(
+        conversation_id,
+        [
+            {"role": "user", "content": user_text},
+            {"role": "assistant", "content": ai_text},
+        ],
+    )
+
 
 def load_history(conversation_id: str) -> List[Dict[str, str]]:
-    mem = get_memory(conversation_id)
-    vars_ = mem.load_memory_variables({})
-    msgs = vars_.get("chat_history", [])
-    out: List[Dict[str, str]] = []
-    for m in msgs:
-        role = "user" if m.__class__.__name__.lower().startswith("human") else "assistant"
-        out.append({"role": role, "content": getattr(m, "content", str(m))})
-    if out:
-        return out
+    """读取会话消息（Redis → SQLite 回源）。
+
+    返回条数**不做窗口裁剪** —— 裁剪由状态图的 `ingest` 节点按会话锁定状态
+    决定（`conversation_window_size` / `locked_window_size`）。
+    """
+    cached = session_cache.get_cached_messages(conversation_id)
+    if cached is not None:
+        return cached
+
     with _lock, _meta_connect() as conn:
         rows = conn.execute(
-            "SELECT role, content FROM conversation_messages WHERE conversation_id = ? ORDER BY turn_index, id",
+            "SELECT role, content FROM conversation_messages "
+            "WHERE conversation_id = ? ORDER BY turn_index, id",
             (conversation_id,),
         ).fetchall()
-    if rows:
-        for r in rows:
-            out.append({"role": r["role"], "content": r["content"]})
-            if len(out) >= 2 * config.CONVERSATION_WINDOW_SIZE:
-                break
-        for i in range(0, len(out), 2):
-            if i + 1 < len(out) and out[i]["role"] == "user" and out[i + 1]["role"] == "assistant":
-                mem.save_context({"input": out[i]["content"]}, {"output": out[i + 1]["content"]})
-    return out
+
+    messages = [{"role": r["role"], "content": r["content"]} for r in rows]
+    if messages:
+        session_cache.set_cached_messages(conversation_id, messages)
+    return messages
 
 
-def clear_memory(conversation_id: str):
-    """Clear short-term memory for a specific conversation."""
-    _memory_instances.pop(conversation_id, None)
+def clear_memory(conversation_id: str) -> None:
+    """清空某个会话的全部消息（库 + 缓存）。"""
     with _lock, _meta_connect() as conn:
-        conn.execute("DELETE FROM conversation_messages WHERE conversation_id = ?", (conversation_id,))
+        conn.execute(
+            "DELETE FROM conversation_messages WHERE conversation_id = ?",
+            (conversation_id,),
+        )
         conn.commit()
+    session_cache.invalidate_messages(conversation_id)
 
 
-def clear_all_memory():
-    _memory_instances.clear()
+def invalidate_history_cache(conversation_id: str) -> None:
+    """仅清缓存，不动数据库。测试与调试用。"""
+    session_cache.invalidate_messages(conversation_id)
 
 
 # ---------------------------------------------------------------------------
-# Metadata (pinned / locked / archived / title)
+#  会话元数据
 # ---------------------------------------------------------------------------
+
 
 def upsert_conversation(
     conversation_id: str,
@@ -180,7 +195,8 @@ def upsert_conversation(
         if row is None:
             conn.execute(
                 """INSERT INTO conversations
-                   (conversation_id, username, title, pinned, locked, archived, created_at, updated_at, turn_count)
+                   (conversation_id, username, title, pinned, locked, archived,
+                    created_at, updated_at, turn_count)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)""",
                 (
                     conversation_id,
@@ -196,30 +212,40 @@ def upsert_conversation(
         else:
             sets, params = [], []
             if title is not None:
-                sets.append("title = ?"); params.append(title)
+                sets.append("title = ?")
+                params.append(title)
             if pinned is not None:
-                sets.append("pinned = ?"); params.append(int(bool(pinned)))
+                sets.append("pinned = ?")
+                params.append(int(bool(pinned)))
             if locked is not None:
-                sets.append("locked = ?"); params.append(int(bool(locked)))
+                sets.append("locked = ?")
+                params.append(int(bool(locked)))
             if archived is not None:
-                sets.append("archived = ?"); params.append(int(bool(archived)))
+                sets.append("archived = ?")
+                params.append(int(bool(archived)))
             if bump_turn:
                 sets.append("turn_count = turn_count + 1")
-            sets.append("updated_at = ?"); params.append(now)
+            sets.append("updated_at = ?")
+            params.append(now)
             params.append(conversation_id)
-            conn.execute(f"UPDATE conversations SET {', '.join(sets)} WHERE conversation_id = ?", params)
+            conn.execute(
+                f"UPDATE conversations SET {', '.join(sets)} WHERE conversation_id = ?",
+                params,
+            )
         conn.commit()
-        row = conn.execute("SELECT * FROM conversations WHERE conversation_id = ?", (conversation_id,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM conversations WHERE conversation_id = ?", (conversation_id,)
+        ).fetchone()
     return _row_to_meta(row)
 
 
 def _row_to_meta(row: Optional[sqlite3.Row]) -> Dict[str, Any]:
     if row is None:
         return {}
-    d = dict(row)
-    for k in ("pinned", "locked", "archived"):
-        d[k] = bool(d.get(k))
-    return d
+    data = dict(row)
+    for key in ("pinned", "locked", "archived"):
+        data[key] = bool(data.get(key))
+    return data
 
 
 def get_conversation(conversation_id: str) -> Dict[str, Any]:
@@ -233,12 +259,13 @@ def get_conversation(conversation_id: str) -> Dict[str, Any]:
 
 
 def verify_owner(conversation_id: str, username: str) -> bool:
-    """Check that `username` owns the conversation (or conversation has no owner yet)."""
+    """校验归属；会话尚无归属时视为可访问（与 v3 行为一致）。"""
     if not conversation_id or not username:
         return False
     with _lock, _meta_connect() as conn:
         row = conn.execute(
-            "SELECT username FROM conversations WHERE conversation_id = ?", (conversation_id,)
+            "SELECT username FROM conversations WHERE conversation_id = ?",
+            (conversation_id,),
         ).fetchone()
     if row is None:
         return True
@@ -246,8 +273,12 @@ def verify_owner(conversation_id: str, username: str) -> bool:
     return not owner or owner == username
 
 
-def list_conversations(username: str = "", include_archived: bool = False,
-                      skip: int = 0, limit: int = 500) -> Dict[str, Any]:
+def list_conversations(
+    username: str = "",
+    include_archived: bool = False,
+    skip: int = 0,
+    limit: int = 500,
+) -> Dict[str, Any]:
     where_params: List[Any] = []
     clauses: List[str] = []
     if username:
@@ -256,13 +287,18 @@ def list_conversations(username: str = "", include_archived: bool = False,
     if not include_archived:
         clauses.append("archived = 0")
     where_sql = (" WHERE " + " AND ".join(clauses)) if clauses else ""
-    count_sql = f"SELECT COUNT(*) AS cnt FROM conversations{where_sql}"
-    data_sql_prefix = f"SELECT * FROM conversations{where_sql}"
-    data_sql = f"{data_sql_prefix} ORDER BY pinned DESC, updated_at DESC LIMIT ? OFFSET ?"
+
     with _lock, _meta_connect() as conn:
-        row = conn.execute(count_sql, where_params).fetchone()
+        row = conn.execute(
+            f"SELECT COUNT(*) AS cnt FROM conversations{where_sql}", where_params
+        ).fetchone()
         total = row["cnt"] if row else 0
-        rows = conn.execute(data_sql, where_params + [limit, skip]).fetchall()
+        rows = conn.execute(
+            f"SELECT * FROM conversations{where_sql} "
+            "ORDER BY pinned DESC, updated_at DESC LIMIT ? OFFSET ?",
+            where_params + [limit, skip],
+        ).fetchall()
+
     return {
         "items": [_row_to_meta(r) for r in rows],
         "total": total,
@@ -274,9 +310,11 @@ def list_conversations(username: str = "", include_archived: bool = False,
 def delete_conversation(conversation_id: str) -> bool:
     clear_memory(conversation_id)
     with _lock, _meta_connect() as conn:
-        cur = conn.execute("DELETE FROM conversations WHERE conversation_id = ?", (conversation_id,))
+        cursor = conn.execute(
+            "DELETE FROM conversations WHERE conversation_id = ?", (conversation_id,)
+        )
         conn.commit()
-    return cur.rowcount > 0
+    return cursor.rowcount > 0
 
 
 def export_conversation(conversation_id: str) -> Dict[str, Any]:
@@ -300,6 +338,7 @@ def export_conversation(conversation_id: str) -> Dict[str, Any]:
 def is_locked(conversation_id: str) -> bool:
     with _lock, _meta_connect() as conn:
         row = conn.execute(
-            "SELECT locked FROM conversations WHERE conversation_id = ?", (conversation_id,)
+            "SELECT locked FROM conversations WHERE conversation_id = ?",
+            (conversation_id,),
         ).fetchone()
     return bool(row and row["locked"])

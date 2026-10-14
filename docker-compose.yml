@@ -8,6 +8,45 @@ name: rag-system
 # ============================================================
 
 services:
+  # ============================================================
+  #  Redis —— 缓存 / 会话状态 / 分布式限流与锁 / LangGraph checkpoint
+  #  使用 redis-stack-server 而非官方 redis：后者缺少 RediSearch 模块，
+  #  LangGraph 的 RedisSaver 无法建立索引（详见 docs/REFACTOR_*.md 3.7）
+  # ============================================================
+  redis:
+    image: redis/redis-stack-server:7.4.0-v0
+    container_name: rag-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command:
+      - redis-stack-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-1gb}
+      # allkeys-lru：缓存不会把 Redis 撑爆。
+      # ⚠️ 若对 checkpoint/分布式锁的可靠性要求高，改为 noeviction，
+      #    并把缓存与状态拆分到不同 DB（REDIS_URL 的 /0 与 /1）
+      - --maxmemory-policy
+      - ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
+    networks:
+      - rag-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 128M
+
   backend:
     build:
       context: ./backend
@@ -29,6 +68,14 @@ services:
       - LOG_DIR=/app/logs
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://localhost:80,http://127.0.0.1}
+      # 容器内通过服务名访问 Redis；生产禁用内存降级
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_FALLBACK_TO_MEMORY=${REDIS_FALLBACK_TO_MEMORY:-false}
+      - GRAPH_USE_LANGGRAPH=${GRAPH_USE_LANGGRAPH:-false}
+      - GRAPH_CHECKPOINTER=${GRAPH_CHECKPOINTER:-memory}
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - rag-network
     restart: unless-stopped
@@ -86,3 +133,5 @@ volumes:
     name: rag-backend-chroma
   backend_logs:
     name: rag-backend-logs
+  redis_data:
+    name: rag-redis-data

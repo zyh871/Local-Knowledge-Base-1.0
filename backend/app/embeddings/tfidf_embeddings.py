@@ -9,7 +9,7 @@ import random
 from collections import defaultdict
 from typing import List
 
-from app import config
+from app.core.config import get_settings
 
 
 class SimpleTFIDFEmbeddings:
@@ -22,7 +22,7 @@ class SimpleTFIDFEmbeddings:
         self.idf_cache: dict = {}
         self._tokenized_corpus: List[List[str]] = []
         self._ready = False
-        self.vocab_path = os.path.join(config.DATA_PATH, "tfidf_vocab.pkl")
+        self.vocab_path = os.path.join(get_settings().paths.data_path, "tfidf_vocab.pkl")
         self._projection_matrix: List[List[float]] = []
         self._load_vocab()
 

@@ -75,8 +75,8 @@ def _extract_function_call(response) -> Optional[Dict[str, Any]]:
 
 
 def _supports_native_function_calling() -> bool:
-    from app import config
-    return config.MODEL_BACKEND in ("modelscope", "openai")
+    from app.core.config import get_settings
+    return get_settings().model.backend in ("modelscope", "openai")
 
 
 def run_function_calling_agent(
@@ -97,7 +97,7 @@ def run_function_calling_agent(
     返回:
         {"answer": str, "tool_calls": [...], "iterations": int}
     """
-    from app.rag_chain import get_llm
+    from app.rag.providers import get_llm
 
     registry = get_registry()
     llm = get_llm()

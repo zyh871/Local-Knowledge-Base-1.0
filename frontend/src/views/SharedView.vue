@@ -7,7 +7,7 @@
           <span class="brand-title">知识库问答</span>
           <span class="brand-tag">只读分享</span>
         </div>
-        <button v-if="data" @click="downloadImage" class="download-btn">
+        <button v-if="data && !workflow" @click="downloadImage" class="download-btn">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
             <polyline points="7 10 12 15 17 10"/>
@@ -22,12 +22,92 @@
       <div v-if="loading" class="state-block">加载中...</div>
       <div v-else-if="error" class="state-block state-error">{{ error }}</div>
       <template v-else-if="data">
-        <h1 class="shared-title">{{ data.title || '对话' }}</h1>
+        <h1 class="shared-title">{{ workflow ? workflow.goal : data.title || '对话' }}</h1>
         <p class="shared-meta">
           创建于 {{ formatDate(data.created_at) }} ·
           有效期至 {{ formatDate(data.expires_at) }}
         </p>
-        <div class="shared-messages">
+
+        <!-- 工作流分享：任务书 + 步骤时间线 + 来源 + 结论（不含文件二进制） -->
+        <template v-if="workflow">
+          <section v-if="workflow.clarify && workflow.clarify.length" class="wf-block">
+            <h2 class="wf-h2">需求澄清</h2>
+            <ul class="wf-list">
+              <li v-for="(item, i) in workflow.clarify" :key="i">
+                {{ item.question }} → <strong>{{ item.answer }}</strong>
+              </li>
+            </ul>
+          </section>
+
+          <section v-if="workflow.constraints && workflow.constraints.length" class="wf-block">
+            <h2 class="wf-h2">约束</h2>
+            <ul class="wf-list">
+              <li v-for="(item, i) in workflow.constraints" :key="i">{{ item }}</li>
+            </ul>
+          </section>
+
+          <section v-if="workflow.summary" class="wf-block">
+            <h2 class="wf-h2">结论</h2>
+            <pre class="shared-text">{{ workflow.summary }}</pre>
+          </section>
+
+          <section class="wf-block">
+            <h2 class="wf-h2">执行明细</h2>
+            <div class="wf-steps">
+              <div v-for="step in workflow.steps" :key="step.idx" class="wf-step">
+                <div class="wf-step-head">
+                  <span class="wf-step-idx">{{ step.idx }}</span>
+                  <span class="wf-step-title">{{ step.title }}</span>
+                  <span :class="['wf-step-chip', `s-${step.status}`]">
+                    {{ stepStatusLabel(step.status) }}
+                  </span>
+                </div>
+                <!-- 截断标记：分享出去的页面上，「模型没写完」不能被当成完整内容读 -->
+                <p v-if="step.truncated" class="wf-step-truncated">
+                  ⚠️ 此段可能不完整（模型输出被截断）
+                </p>
+                <!-- 该步正文已经作为「结论」完整出现在上方，此处不再重复 -->
+                <p
+                  v-else-if="isConclusionStep(step)"
+                  class="wf-step-pointer"
+                >
+                  （正文见上方「结论」）
+                </p>
+                <div
+                  v-if="step.summary && !isConclusionStep(step)"
+                  class="wf-step-body"
+                  v-html="renderStepText(step.summary, workflow.sources)"
+                ></div>
+                <p v-if="step.error" class="wf-step-error">{{ step.error }}</p>
+              </div>
+            </div>
+          </section>
+
+          <section v-if="workflow.sources && workflow.sources.length" class="wf-block">
+            <h2 class="wf-h2">参考链接</h2>
+            <ol class="wf-sources">
+              <li v-for="src in workflow.sources" :key="src.href">
+                <a
+                  :class="{ dead: src.reachable === false }"
+                  :href="src.href"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >{{ src.title || src.href }}</a>
+                <span v-if="src.reachable === false" class="wf-dead">可能失效</span>
+              </li>
+            </ol>
+          </section>
+
+          <section v-if="workflow.artifacts && workflow.artifacts.length" class="wf-block">
+            <h2 class="wf-h2">交付物</h2>
+            <ul class="wf-list">
+              <li v-for="(item, i) in workflow.artifacts" :key="i">{{ item.filename }}</li>
+            </ul>
+            <p class="wf-note">文件单独走一次性下载链接，不随分享页下发。</p>
+          </section>
+        </template>
+
+        <div v-else class="shared-messages">
           <div
             v-for="(m, idx) in messagesList"
             :key="idx"
@@ -77,6 +157,56 @@ const messagesList = computed(() => {
   if (!data.value || !data.value.data) return []
   return data.value.data.messages || data.value.data.history || []
 })
+
+/** 工作流分享：payload 里带 `kind = "workflow"`，按工作流渲染而不是当对话渲染。 */
+const workflow = computed(() =>
+  data.value?.data?.kind === 'workflow' ? data.value.data : null
+)
+
+/** 工作流里的 `[n]` 引用：编号对应 payload.sources 的下标。 */
+function renderStepText(text, sources) {
+  const escape = (s) =>
+    String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+  const pool = sources || []
+  return escape(text).replace(/\[(\d{1,2})\]/g, (match, n) => {
+    const src = pool[Number(n) - 1]
+    if (!src || !src.href) return match
+    const dead = src.reachable === false ? ' cite-dead' : ''
+    return `<a class="cite${dead}" href="${escape(src.href)}" target="_blank" rel="noopener noreferrer">[${n}]</a>`
+  })
+}
+
+const STEP_STATUS_LABELS = {
+  done: '已完成',
+  skipped: '已跳过',
+  failed: '失败',
+  pending: '未执行',
+  running: '执行中',
+  approved: '已批准',
+  awaiting_approval: '待确认',
+  rejected: '已驳回',
+}
+
+/**
+ * 这一步的正文是否已经作为「结论」出现在上方。
+ *
+ * 分享页与交付物必须用同一套判定（后端 `conclusion_of`），
+ * 否则会出现「页面上说见结论、但结论并不是这一段」。后端把结论所在的
+ * 步骤序号随载荷一起下发（`conclusion_idx`），这里只做比对。
+ */
+function isConclusionStep(step) {
+  const idx = workflow.value?.conclusion_idx
+  return idx !== null && idx !== undefined && step.idx === idx && !!step.summary
+}
+
+function stepStatusLabel(status) {
+  return STEP_STATUS_LABELS[status] || status
+}
 
 function formatDate(s) {
   if (!s) return ''
@@ -421,5 +551,153 @@ onMounted(async () => {
 }
 .shared-sources a {
   color: inherit;
+}
+
+/* ===== 工作流分享 ===== */
+.wf-block {
+  margin-top: 26px;
+}
+
+.wf-h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.25);
+}
+
+.wf-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.9;
+}
+
+.wf-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.wf-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wf-step {
+  padding: 10px 12px;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  border-radius: 8px;
+}
+
+.wf-step-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.wf-step-idx {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 12px;
+  border-radius: 50%;
+  background: rgba(127, 127, 127, 0.16);
+  flex-shrink: 0;
+}
+
+.wf-step-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.wf-step-chip {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(127, 127, 127, 0.16);
+  flex-shrink: 0;
+}
+
+.wf-step-chip.s-done {
+  background: rgba(34, 139, 34, 0.16);
+}
+.wf-step-chip.s-failed {
+  background: rgba(200, 60, 60, 0.16);
+}
+.wf-step-chip.s-skipped {
+  opacity: 0.7;
+}
+
+.wf-step-body {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 「此段可能不完整」：截断必须看得见，否则会被当成完整内容读 */
+.wf-step-truncated {
+  margin-top: 8px;
+  padding: 6px 9px;
+  font-size: 12px;
+  border-radius: var(--radius-md);
+  background-color: var(--state-warning-bg);
+  color: var(--state-warning);
+}
+
+/* 「正文见上方结论」：避免同一段正文在页面上出现两次 */
+.wf-step-pointer {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
+.wf-step-body :deep(.cite) {
+  display: inline-block;
+  padding: 0 4px;
+  margin: 0 1px;
+  font-size: 11px;
+  border-radius: 4px;
+  background: rgba(60, 120, 200, 0.16);
+  text-decoration: none;
+}
+.wf-step-body :deep(.cite-dead) {
+  background: rgba(200, 140, 40, 0.2);
+}
+
+.wf-step-error {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #c0392b;
+}
+
+.wf-sources {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.9;
+}
+.wf-sources a {
+  color: inherit;
+  word-break: break-all;
+}
+.wf-sources a.dead {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+.wf-dead {
+  margin-left: 6px;
+  font-size: 11px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: rgba(200, 140, 40, 0.2);
 }
 </style>

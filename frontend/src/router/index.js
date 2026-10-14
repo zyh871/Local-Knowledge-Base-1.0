@@ -13,6 +13,18 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/work',
+    name: 'Work',
+    component: () => import('../views/WorkView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/models',
+    name: 'ModelSettings',
+    component: () => import('../views/ModelSettings.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/shared/:token',
     name: 'Shared',
     component: () => import('../views/SharedView.vue'),

@@ -156,21 +156,20 @@ def load_csv(file_path: str) -> List[Document]:
 
 
 def load_image_ocr(file_path: str) -> List[Document]:
-    try:
-        import pytesseract
-        from PIL import Image
-    except ImportError:
-        logger.warning("pytesseract/PIL not installed; cannot OCR image")
+    """图片 OCR（委托给 app/document/ocr.py）。
+
+    两种失败严格区分：
+      * 引擎/语言包缺失 → 抛 `OcrUnavailableError`（环境问题，用户可修）
+      * 图片确实没有可识别文字 → 返回 []（正常结果）
+
+    旧实现两种情况都返回 []，调用方只能笼统报「无法解析」，用户无从下手。
+    """
+    from app.document.ocr import image_to_text
+
+    content = image_to_text(file_path)
+    if not content.strip():
         return []
-    try:
-        img = Image.open(file_path)
-        content = pytesseract.image_to_string(img, lang="chi_sim+eng")
-        if not content.strip():
-            return []
-        return [Document(page_content=content, metadata=_meta(file_path))]
-    except Exception as e:
-        logger.error(f"OCR failed for {file_path}: {e}")
-        return []
+    return [Document(page_content=content, metadata=_meta(file_path))]
 
 
 LOADER_MAPPING = {
@@ -188,10 +187,35 @@ LOADER_MAPPING = {
     ".png": load_image_ocr,
     ".bmp": load_image_ocr,
     ".tiff": load_image_ocr,
+    # ── 文本类格式：按**原文**读入 ────────────────────────────────
+    #
+    # 这些是「源码 / 配置 / 数据」格式。用户做前端类任务时，往往要把已有的
+    # HTML 页面喂给模型当参考 —— 而它此前不在白名单里，会出现
+    # 「选择器里看得见、一点就被拒」的挫败感。
+    #
+    # 为什么**不剥离 HTML 标签**：工作流要的是「拿它当源码来改」，
+    # 标签、内联 CSS/JS 恰恰是要修改的对象。剥成纯文本反而把要改的东西删了。
+    # 代价是 RAG 检索时会混入标记噪声 —— 这是刻意的取舍：宁可检索时多一点噪声，
+    # 也不要让模型看不到结构。
+    ".html": load_text,
+    ".htm": load_text,
+    ".js": load_text,
+    ".mjs": load_text,
+    ".css": load_text,
+    ".json": load_text,
+    ".xml": load_text,
+    ".yaml": load_text,
+    ".yml": load_text,
+    ".toml": load_text,
+    ".ini": load_text,
+    ".log": load_text,
+    ".sql": load_text,
 }
 
 
 def load_any(file_path: str) -> List[Document]:
+    from app.core.exceptions import AppError
+
     ext = os.path.splitext(file_path)[1].lower()
     fn = LOADER_MAPPING.get(ext)
     if not fn:
@@ -203,6 +227,10 @@ def load_any(file_path: str) -> List[Document]:
             d.metadata["source"] = os.path.basename(file_path)
             d.metadata.setdefault("file_type", ext.lstrip("."))
         return docs
+    except AppError:
+        # 领域异常（如 OcrUnavailableError）携带可操作的原因，
+        # 必须向上透传 —— 吞掉它会让用户只看到「无法解析」而无从下手。
+        raise
     except Exception as e:
         logger.error(f"Failed to load {file_path}: {e}")
         return []

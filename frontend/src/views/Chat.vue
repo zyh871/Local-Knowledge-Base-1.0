@@ -1,7 +1,8 @@
 <template>
-  <div class="chat-main flex h-screen overflow-hidden">
+  <AppLayout>
     <!-- Sidebar -->
-    <aside class="sidebar hidden lg:flex w-[260px] shrink-0 flex-col">
+    <template #sidebar>
+    <aside class="sidebar hidden lg:flex w-[260px] shrink-0 flex-col min-h-0">
       <div class="sidebar-header p-5">
         <h1 class="sidebar-title mb-4 font-semibold">知识库问答</h1>
         <button @click="newChat" class="new-chat-btn flex items-center justify-center gap-2 w-full py-2 text-sm whitespace-nowrap">
@@ -12,7 +13,7 @@
         </button>
       </div>
 
-      <div class="chat-list flex-1 overflow-y-auto px-3">
+      <div class="chat-list flex-1 min-h-0 overflow-y-auto px-3">
         <!-- Search -->
         <div class="mb-3">
           <div class="search-box relative">
@@ -220,6 +221,13 @@
             </svg>
             长文本工具
           </button>
+          <button @click="router.push('/models')" class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            模型设置
+          </button>
           <button @click="toggleTheme" class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
             <svg v-if="theme === 'light'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
               <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
@@ -260,7 +268,7 @@
           </svg>
         </button>
       </div>
-      <div class="sidebar-content flex-1 overflow-y-auto" @click.stop>
+      <div class="sidebar-content flex-1 min-h-0 overflow-y-auto" @click.stop>
         <button @click="newChat; sidebarOpen = false" class="new-chat-btn flex items-center justify-center gap-2 w-full mx-5 mb-4 py-2 text-sm whitespace-nowrap">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 5v14M5 12h14"/>
@@ -268,7 +276,7 @@
           新对话
         </button>
 
-        <div class="chat-list flex-1 overflow-y-auto px-3">
+        <div class="chat-list flex-1 min-h-0 overflow-y-auto px-3">
           <div class="mb-3">
             <div class="search-box relative">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="absolute left-2.5 top-1/2 -translate-y-1/2">
@@ -335,6 +343,13 @@
             </svg>
             长文本工具
           </button>
+          <button @click="router.push('/models')" class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            模型设置
+          </button>
           <button @click="toggleTheme" class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
             <svg v-if="theme === 'light'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
               <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
@@ -358,8 +373,10 @@
       </div>
     </div>
 
+    </template>
+
     <!-- Main chat area -->
-    <section class="chat-section flex-1 flex flex-col min-w-0">
+    <section class="chat-section flex-1 flex flex-col min-w-0 min-h-0">
       <!-- Backend connection warning -->
       <div v-if="backendOffline" class="backend-offline-banner flex items-center justify-center gap-2 px-4 py-2 text-xs shrink-0">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -393,7 +410,12 @@
       </header>
 
       <!-- Messages area -->
-      <div class="messages-area flex-1 overflow-y-auto px-4 py-6 lg:px-6" ref="chatBox">
+      <!-- ⚠️ `min-h-0` 不能去掉：这是 flex 纵向布局里最容易踩的坑 ——
+           弹性子元素默认 `min-height: auto`，会**拒绝缩到内容高度以下**，
+           于是整个 chat-section 被撑得比可视区还高，底部的输入区被挤出容器，
+           再被外层 app-shell 的 overflow:hidden 裁掉（表现为输入框被截断）。
+           加上 min-h-0，消息区才会缩下来并自己滚动。 -->
+      <div class="messages-area flex-1 min-h-0 overflow-y-auto px-4 py-6 lg:px-6" ref="chatBox">
         <!-- Empty state -->
         <div v-if="messages.length === 0" class="empty-state flex-col items-center justify-center h-full">
           <div class="empty-icon w-20 h-20 flex items-center justify-center mb-6">
@@ -615,6 +637,65 @@
             </svg>
             问答
           </button>
+
+          <!-- 模型切换控件（右对齐）：显示当前模型，点击展开候选列表 -->
+          <div class="model-picker ml-auto">
+            <button
+              type="button"
+              class="quick-pill model-pill inline-flex items-center gap-1.5 px-3 py-1.5 text-xs whitespace-nowrap"
+              :class="{ open: modelMenuOpen }"
+              :disabled="loading || availableModels.length === 0"
+              :title="availableModels.length ? '切换本次对话使用的模型' : '模型列表不可用'"
+              @click="toggleModelMenu"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="4" y="4" width="16" height="16" rx="2"/>
+                <rect x="9" y="9" width="6" height="6"/>
+                <path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/>
+              </svg>
+              <span class="model-pill-label">{{ selectedModel || '默认模型' }}</span>
+              <svg class="model-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+
+            <!-- 点击遮罩关闭 -->
+            <div v-if="modelMenuOpen" class="model-backdrop" @click="closeModelMenu"></div>
+
+            <div v-if="modelMenuOpen" class="model-menu">
+              <div class="model-menu-head">
+                <span>选择模型</span>
+                <span v-if="modelBackend" class="model-backend-tag">{{ modelBackend }}</span>
+              </div>
+              <button
+                v-for="m in availableModels"
+                :key="m.id"
+                type="button"
+                class="model-option"
+                :class="{ active: m.id === selectedModel }"
+                @click="selectModel(m.id)"
+              >
+                <span class="model-option-main">
+                  <!-- 自定义端点的 id 形如 custom:me_xxx，对用户没有意义，
+                       所以主行直接显示用户起的名字（label） -->
+                  <span class="model-option-id">{{ m.custom ? m.label : m.id }}</span>
+                  <span
+                    v-if="!m.custom && m.label && m.label !== m.id"
+                    class="model-option-desc"
+                  >{{ m.label }}</span>
+                </span>
+                <span v-if="m.custom" class="model-option-tag custom">自定义</span>
+                <span v-if="m.is_default" class="model-option-tag">默认</span>
+                <svg v-if="m.id === selectedModel" class="model-option-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              </button>
+              <div v-if="availableModels.length === 0" class="model-menu-empty">暂无可用模型</div>
+              <button type="button" class="model-menu-manage" @click="goModelSettings">
+                管理模型…
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- Input wrapper with embedded buttons -->
@@ -626,7 +707,9 @@
                 <polyline points="17 8 12 3 7 8"/>
                 <line x1="12" y1="3" x2="12" y2="15"/>
               </svg>
-              <input type="file" multiple accept=".txt,.pdf,.md,.docx,.pptx,.ppt,.xlsx,.xls,.csv,.jpg,.jpeg,.png,.bmp,.tiff" @change="handleFileUpload" class="hidden" />
+              <!-- accept 只是对话框的筛选提示，权威列表在后端 SUPPORTED_EXTENSIONS，
+                   两边需要保持一致（对应 workflow 的 /capabilities 会下发该列表）。 -->
+              <input type="file" multiple accept=".txt,.md,.pdf,.docx,.pptx,.ppt,.xlsx,.xls,.csv,.jpg,.jpeg,.png,.bmp,.tiff,.html,.htm,.js,.css,.json,.xml,.yaml,.yml,.toml,.ini,.log,.sql" @change="handleFileUpload" class="hidden" />
             </label>
             <label class="toolbar-btn flex items-center justify-center p-2 cursor-pointer" :class="{ active: pendingImage }" title="图片问答">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -771,7 +854,7 @@
         </div>
         <div class="modal-footer">
           <label class="upload-btn-large">
-            <input type="file" multiple accept=".txt,.pdf,.md,.docx,.pptx,.ppt,.xlsx,.xls,.csv,.jpg,.jpeg,.png,.bmp,.tiff" @change="handleFileUpload" />
+            <input type="file" multiple accept=".txt,.md,.pdf,.docx,.pptx,.ppt,.xlsx,.xls,.csv,.jpg,.jpeg,.png,.bmp,.tiff,.html,.htm,.js,.css,.json,.xml,.yaml,.yml,.toml,.ini,.log,.sql" @change="handleFileUpload" />
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="17 8 12 3 7 8"/>
@@ -884,7 +967,7 @@
         </div>
       </div>
     </div>
-  </div>
+  </AppLayout>
 </template>
 
 <script setup>
@@ -892,6 +975,11 @@ import { ref, reactive, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import AppLayout from '../layouts/AppLayout.vue'
+import { useTheme } from '../composables/useTheme'
+
+// 主题由 useTheme 单例统一管理（AppLayout / WorkView / Chat 共享同一份状态）
+const { theme, toggleTheme } = useTheme()
 
 marked.setOptions({ breaks: true, gfm: true })
 
@@ -899,6 +987,70 @@ const router = useRouter()
 const API_BASE = '/api'
 const token = ref(localStorage.getItem('token') || '')
 const question = ref('')
+
+// ---- 模型切换（输入框上方的选择控件）----
+// 选择是「无状态」的：只随每个请求带给后端，不写入会话，不影响其他用户。
+const availableModels = ref([])
+const defaultModel = ref('')
+const selectedModel = ref(localStorage.getItem('selectedModel') || '')
+const modelMenuOpen = ref(false)
+const modelBackend = ref('')
+
+const currentModelLabel = computed(() => {
+  const hit = availableModels.value.find(m => m.id === selectedModel.value)
+  if (!hit) return selectedModel.value || '默认模型'
+  // 只在有说明时拼接，避免出现「glm-4-flash · 」这种尾部空描述
+  return hit.label && hit.label !== hit.id ? hit.label : hit.id
+})
+
+function persistModel() {
+  try {
+    localStorage.setItem('selectedModel', selectedModel.value || '')
+  } catch (e) {
+    // localStorage 可能被禁用（隐私模式），失败不影响功能
+  }
+}
+
+function selectModel(id) {
+  selectedModel.value = id
+  persistModel()
+  modelMenuOpen.value = false
+}
+
+function toggleModelMenu() {
+  modelMenuOpen.value = !modelMenuOpen.value
+}
+
+function closeModelMenu() {
+  modelMenuOpen.value = false
+}
+
+/** 从模型菜单直达模型设置页 —— 别让用户去猜侧边栏里哪个入口才是配模型的地方。 */
+function goModelSettings() {
+  modelMenuOpen.value = false
+  router.push('/models')
+}
+
+async function fetchModels() {
+  try {
+    const res = await fetch(`${API_BASE}/models`, { headers: getAuthHeader() })
+    if (!res.ok) return
+    const data = await res.json()
+    availableModels.value = data.models || []
+    defaultModel.value = data.default_model || ''
+    modelBackend.value = data.backend || ''
+
+    const ids = availableModels.value.map(m => m.id)
+    // 已存的选择若已不在白名单（比如换了后端），回落到服务端默认
+    if (!selectedModel.value || !ids.includes(selectedModel.value)) {
+      selectedModel.value = defaultModel.value || ids[0] || ''
+      persistModel()
+    }
+  } catch (e) {
+    console.error('获取模型列表失败:', e)
+  }
+}
+
 const messages = ref([])
 const loading = ref(false)
 const chatBox = ref(null)
@@ -911,7 +1063,6 @@ const conversationId = ref('')
 const forceSearch = ref(false)
 const pendingImage = ref(null)
 const expandedSources = ref({})
-const theme = ref(localStorage.getItem('theme') || 'light')
 const copiedIdx = ref(-1)
 const editingChatId = ref(null)
 const editingChatTitle = ref('')
@@ -1370,13 +1521,6 @@ function toggleDocumentPanel() {
   }
 }
 
-function toggleTheme() {
-  theme.value = theme.value === 'light' ? 'dark' : 'light'
-  localStorage.setItem('theme', theme.value)
-  document.documentElement.classList.remove(theme.value === 'light' ? 'dark' : 'light')
-  document.documentElement.classList.add(theme.value)
-}
-
 function logout() {
   token.value = ''
   localStorage.removeItem('token')
@@ -1741,7 +1885,8 @@ async function sendImageQuestion(q, img) {
           try {
             const data = JSON.parse(line.slice(6))
             if (data.type === 'chunk') {
-              const cleanChunk = cleanLLMChunk(data.content)
+              // trim:false —— 分片必须保留首尾空白，否则词间空格会被吃掉
+              const cleanChunk = cleanLLMChunk(data.content, { trim: false })
               if (cleanChunk) {
                 if (messages.value[assistantIdx].status === 'thinking') {
                   messages.value[assistantIdx].status = 'streaming'
@@ -1835,7 +1980,9 @@ async function sendQuestion() {
       body: JSON.stringify({
         question: q,
         conversation_id: conversationId.value,
-        force_search: forceSearch.value
+        force_search: forceSearch.value,
+        // 模型切换：留空则后端用默认模型
+        model: selectedModel.value || undefined
       }),
       signal: abortController.signal
     })
@@ -1867,7 +2014,8 @@ async function sendQuestion() {
           try {
             const data = JSON.parse(line.slice(6))
             if (data.type === 'chunk') {
-              const cleanChunk = cleanLLMChunk(data.content)
+              // trim:false —— 分片必须保留首尾空白，否则词间空格会被吃掉
+              const cleanChunk = cleanLLMChunk(data.content, { trim: false })
               if (cleanChunk) {
                 if (messages.value[assistantIdx].status === 'thinking') {
                   messages.value[assistantIdx].status = 'streaming'
@@ -2032,7 +2180,20 @@ function formatSize(bytes) {
 }
 
 const _INTERNAL_NOISE_RE = /(content=""|additional_kwargs=|response_metadata=|usage_metadata=|tool_calls=\[|invalid_tool_calls=|input_token_details|output_token_details|tool_call_chunks=|chunk_position=|id='?-?lc_)/g
-function cleanLLMChunk(text) {
+
+/**
+ * 清洗 LLM 输出。
+ *
+ * ⚠️ 两个曾经踩过的坑：
+ *  1. **流式分片不能 trim**。逐块 `.trim()` 会把分片之间的空格/换行吃掉
+ *     （英文按 token 流式时 `"Hello"` + `" world"` 会粘成 `"Helloworld"`），
+ *     纯空白分片还会被 `if (cleanChunk)` 直接丢弃。
+ *     因此流式分片传 `{ trim: false }`，只在最终答案上 trim。
+ *  2. **带 `g` 标志的正则用 `.test()` 是有状态的**：`lastIndex` 会在调用间保留，
+ *     连续调用会交替返回 true/false，导致噪声过滤时灵时不灵。用完必须重置。
+ */
+function cleanLLMChunk(text, options = {}) {
+  const { trim = true } = options
   if (text == null) return ''
   if (typeof text !== 'string') {
     if (text && typeof text === 'object' && typeof text.text === 'string') text = text.text
@@ -2040,10 +2201,16 @@ function cleanLLMChunk(text) {
     else return ''
   }
   if (!text) return ''
+
+  _INTERNAL_NOISE_RE.lastIndex = 0
   if (_INTERNAL_NOISE_RE.test(text)) {
+    _INTERNAL_NOISE_RE.lastIndex = 0
     text = text.replace(_INTERNAL_NOISE_RE, '')
   }
-  return text.replace(/^\s*>\s*注[:：].*$/gm, '').trim()
+  _INTERNAL_NOISE_RE.lastIndex = 0
+
+  text = text.replace(/^\s*>\s*注[:：].*$/gm, '')
+  return trim ? text.trim() : text
 }
 
 function isWebSource(msg) {
@@ -2292,6 +2459,7 @@ onMounted(async () => {
     await loadDocuments()
     await loadProfile()
     await fetchExampleQuestions()
+    await fetchModels()
   }
   backendCheckTimer = setInterval(checkBackend, 10000)
 })
@@ -3131,6 +3299,164 @@ onUnmounted(() => {
 .quick-tools .quick-pill:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* ===== 模型切换控件 ===== */
+.model-picker {
+  position: relative;
+}
+
+.model-pill.open {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.model-pill-label {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.model-caret {
+  transition: transform 0.18s ease;
+}
+
+.model-pill.open .model-caret {
+  transform: rotate(180deg);
+}
+
+/* 透明遮罩：点击任意处关闭菜单（比监听 document 更省事，也不怕漏解绑） */
+.model-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.model-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 41;
+  min-width: 260px;
+  max-width: 340px;
+  padding: 6px;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-elevated);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.model-menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 8px;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 4px;
+}
+
+.model-backend-tag {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background-color: var(--color-surface-secondary);
+  color: var(--color-text-secondary);
+  font-size: 10px;
+}
+
+.model-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: var(--color-text-primary);
+  transition: background-color 0.12s;
+}
+
+.model-option:hover {
+  background-color: var(--color-surface-secondary);
+}
+
+.model-option.active {
+  background-color: var(--color-surface-secondary);
+  color: var(--color-primary);
+}
+
+.model-option-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.model-option-id {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-option-desc {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-option-tag {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+}
+
+.model-option-check {
+  flex-shrink: 0;
+  color: var(--color-primary);
+}
+
+.model-menu-empty {
+  padding: 10px 8px;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  text-align: center;
+}
+
+/* 自定义模型：用主色系标出来，与内置模型一眼可分 */
+.model-option-tag.custom {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.model-menu-manage {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px;
+  font-size: var(--text-xs);
+  text-align: center;
+  color: var(--color-text-secondary);
+  border-top: 1px solid var(--color-border-light);
+}
+
+.model-menu-manage:hover {
+  color: var(--color-primary);
 }
 
 .input-footer-hint {

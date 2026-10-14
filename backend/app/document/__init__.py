@@ -9,6 +9,14 @@ from .long_text import (
     summarize,
     translate,
 )
+from .ocr import (
+    available_languages,
+    image_to_text,
+    normalize_cjk_spacing,
+    probe,
+    resolve_tesseract_cmd,
+    resolve_tessdata_prefix,
+)
 from .parser import (
     LOADER_MAPPING,
     SUPPORTED_EXTENSIONS,

@@ -103,27 +103,6 @@ class TestShouldSearch:
 
 
 # ---------------------------------------------------------------------------
-# router.config_topk
-# ---------------------------------------------------------------------------
-
-class TestConfigTopK:
-    def test_returns_max(self):
-        from app.agents.router import config_topk
-        from app import config
-        result = config_topk(20)
-        assert result == max(20, config.RETRIEVER_K)
-
-    def test_returns_requested_when_larger(self):
-        from app.agents.router import config_topk
-        assert config_topk(100) == 100
-
-    def test_returns_retriever_k_when_smaller(self):
-        from app.agents.router import config_topk
-        from app import config as cfg
-        assert config_topk(1) == max(1, cfg.RETRIEVER_K)
-
-
-# ---------------------------------------------------------------------------
 # conversation_memory
 # ---------------------------------------------------------------------------
 
@@ -146,7 +125,7 @@ class TestConversationMemory:
     def test_message_persistence(self):
         from app.memory.conversation_memory import (
             upsert_conversation, save_context, load_history,
-            delete_conversation, _memory_instances
+            delete_conversation, invalidate_history_cache
         )
         cid = f"test_msg_{uuid.uuid4().hex[:8]}"
         upsert_conversation(conversation_id=cid, username="testuser_msg", title="Msg Test")
@@ -154,7 +133,8 @@ class TestConversationMemory:
         save_context(conversation_id=cid, user_text="Hello 2", ai_text="AI 2")
         hist = load_history(cid)
         assert len(hist) == 4
-        _memory_instances.pop(cid, None)
+        # 清掉缓存后应能正确回源 SQLite（真相源）
+        invalidate_history_cache(cid)
         hist2 = load_history(cid)
         assert len(hist2) == 4
         assert hist2[0]["content"] == "Hello 1"
@@ -175,20 +155,21 @@ class TestConversationMemory:
 
     def test_clear_memory_removes_messages(self):
         from app.memory.conversation_memory import (
-            upsert_conversation, save_context, clear_memory,
-            delete_conversation, _memory_instances, _meta_connect, _lock
+            upsert_conversation, save_context, clear_memory, load_history,
+            delete_conversation, invalidate_history_cache, _meta_connect, _lock
         )
         cid = f"test_clear_{uuid.uuid4().hex[:8]}"
         upsert_conversation(conversation_id=cid, username="testuser_clr", title="Clear Test")
         save_context(conversation_id=cid, user_text="msg1", ai_text="resp1")
         clear_memory(cid)
-        _memory_instances.pop(cid, None)
+        invalidate_history_cache(cid)
         with _lock, _meta_connect() as conn:
             row = conn.execute(
                 "SELECT COUNT(*) AS cnt FROM conversation_messages WHERE conversation_id = ?",
                 (cid,),
             ).fetchone()
         assert row["cnt"] == 0
+        assert load_history(cid) == []
         delete_conversation(cid)
 
 
@@ -349,14 +330,29 @@ class TestBM25Retriever:
 # ---------------------------------------------------------------------------
 
 class TestConfig:
+    """配置读取走 `app.core.config`（旧 `app.config` 兼容外壳已删除）。"""
+
     def test_vision_model_defined(self):
-        from app import config
-        assert hasattr(config, "VISION_MODEL")
-        assert config.VISION_MODEL
+        from app.core.config import get_settings
+
+        assert get_settings().model.vision_model
 
     def test_retriever_k_positive(self):
-        from app import config
-        assert config.RETRIEVER_K >= 1
+        from app.core.config import get_settings
+
+        assert get_settings().retrieval.retriever_k >= 1
+
+    def test_llm_model_defined(self):
+        from app.core.config import get_settings
+
+        assert get_settings().model.llm_model
+
+    def test_no_legacy_config_module(self):
+        """回归保护：旧兼容外壳若被重新引入，说明迁移未彻底。"""
+        import importlib
+
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module("app.config")
 
 
 if __name__ == "__main__":

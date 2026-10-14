@@ -4,12 +4,12 @@ Vector retriever using Chroma for semantic search.
 
 import logging
 import os
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
-from app import config
+from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class VectorRetriever:
     def __init__(self):
         self.vectorstore: Optional[Chroma] = None
         self._embeddings = None
-        self._persist_dir = config.CHROMA_PERSIST_DIR
+        self._persist_dir = get_settings().paths.chroma_persist_dir
         self._ready = False
 
     def initialize(self, embeddings):
