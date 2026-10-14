@@ -106,8 +106,18 @@ def _run_tool(state: dict, step: dict, deps: Any) -> dict:
     if tool_name == "file_write":
         call_kwargs["_context"] = state.get("write_ctx") or {}
 
+    # 门禁下沉后，注册表要求高风险工具必须带审批凭据才能执行。
+    # 工作流侧的依据是**步骤状态**：只有人工批准过（status == "approved"）才发凭据。
+    # 服务端在 workflow_service.py:967 已把未审批的步骤拦在 awaiting_approval，
+    # 这里是第二道闸门 —— 两道都在，改动其中一处时另一处仍能兜住。
+    approval = None
+    if str(step.get("status") or "") == "approved":
+        from app.tools.base import ApprovalGrant
+
+        approval = ApprovalGrant(tool=tool_name, source=f"workflow:step:{idx}")
+
     logger.info(f"[步骤 {idx}] 调用工具 {tool_name}")
-    result = registry.execute(tool_name, **call_kwargs)
+    result = registry.execute(tool_name, _approval=approval, **call_kwargs)
     output = normalize_tool_output(tool_name, result)
 
     if output.get("failed"):

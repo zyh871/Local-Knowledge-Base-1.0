@@ -18,6 +18,7 @@ P1 只做「落库 + 上下文准备」：创建 run 后停在 `draft`，澄清�
 from __future__ import annotations
 
 import asyncio
+import functools
 import hashlib
 import os
 import shutil
@@ -63,6 +64,84 @@ _MODES = [{"value": value, "label": label} for value, label in _MODE_LABELS.item
 #: 「待批准」的任务改回「澄清中」，界面上批准按钮直接消失且没有任何错误。
 #: 状态推进必须单调，所以这里用白名单而不是"总是写"。
 _CLARIFY_WRITABLE_STATUSES = frozenset({"draft", "intake", "clarifying"})
+
+#: 规划流允许回写状态的范围 —— 与澄清同理：任务书一旦就绪（`awaiting_approval`）
+#: 或任务已开始执行，就不允许再被错误路径拉回去。
+#: 比澄清多一个 `planning`：规划进行中报错，本来就该记成失败。
+_PLAN_WRITABLE_STATUSES = frozenset({"draft", "intake", "clarifying", "planning"})
+
+#: 阶段级互斥锁冲突时的提示文案。
+_SCOPE_LABELS = {"clarify": "澄清", "plan": "生成任务书"}
+
+
+def _serialize_per_run(scope: str):
+    """装饰 SSE 流方法：同一条 run 的同一阶段，只允许一条流在跑。
+
+    ★ 为什么要它
+    -----------
+    `clarify` / `plan` / `execute` 是三条**独立的 SSE 流**。用户完全可能在
+    澄清还没回来时就点了「生成任务书」，于是两条流同时跑：重复烧 LLM 调用，
+    同时争抢同一条 run 的状态。
+
+    状态那半边已由 `_write_status_monotonic` 兜住（不会被写回退），
+    但那解决的是「写坏」，不是「重复执行」—— 这两件事得分别处理。
+
+    `execute` 一直有锁（`stream_execute_step`），`clarify` / `plan` 此前没有，
+    这里补齐。
+
+    ⚠️ 为什么用装饰器，而不是在函数体里写 `async with`：
+    这两个函数各有 150+ 行，加一层 `async with` 意味着整段代码多缩进一级。
+    纯缩进改动是最容易改出事故的一类改动 —— 装饰器让原有函数体一行都不动。
+
+    Redis 不可用时退化为无锁（与 `execute` 的既有行为一致）：单机单进程
+    本来就不存在跨 worker 并发的可能。
+    """
+
+    def decorator(method):
+        @functools.wraps(method)
+        async def wrapper(
+            self, *, run_id: str, username: str, trace_id: str = "-", **extra
+        ):
+            from app.core.redis import LockNotAcquired, distributed_lock
+            from app.schemas.qa import sse_frame
+
+            lock_ctx = (
+                distributed_lock(
+                    self.redis,
+                    f"workflow:{scope}:{run_id}",
+                    ttl=int(getattr(self.config, "step_timeout_seconds", 180)) + 120,
+                )
+                if self.redis is not None
+                else _no_lock()
+            )
+
+            try:
+                async with lock_ctx:
+                    async for frame in method(
+                        self,
+                        run_id=run_id,
+                        username=username,
+                        trace_id=trace_id,
+                        **extra,
+                    ):
+                        yield frame
+            except LockNotAcquired:
+                # 响应头可能已经发出，所以只能转成 final 事件（与既有约定一致）
+                label = _SCOPE_LABELS.get(scope, scope)
+                yield sse_frame(
+                    {
+                        "type": "final",
+                        "content": {
+                            "ok": False,
+                            "error": f"该任务正在{label}中，请等待它结束再试",
+                        },
+                        "trace_id": trace_id,
+                    }
+                )
+
+        return wrapper
+
+    return decorator
 
 
 class WorkflowService:
@@ -770,6 +849,42 @@ class WorkflowService:
             "renamed": bool(written.get("renamed")),
         }
 
+    def _write_status_monotonic(
+        self,
+        run_id: str,
+        *,
+        status: str,
+        writable: frozenset[str],
+        **fields: Any,
+    ) -> dict[str, Any]:
+        """写 run 状态，但**绝不把已经推进过的状态拉回来**。
+
+        ★ 与 `_write_clarify_status` 同一个根因，只是入口不同：
+
+        澄清 / 规划 / 生成任务书是**三条独立的 SSE 流**。用户在一条还没跑完时
+        点了另一条，两条流同时写 run 状态，后写的赢。若后写的那条正好带着
+        错误回来，就会把已经推进到「待批准」的任务**回退成 failed** ——
+        批准按钮直接消失，界面上没有任何错误，用户看到的是"卡住了"。
+
+        实测复现（修复前）：
+
+            任务书已就绪  status → awaiting_approval
+            澄清流报错    status → failed            ← 任务书被静默降级
+
+        所以状态推进必须是**单调**的：只有当前状态仍在 `writable` 内（也就是
+        "还没推进到这一步之后"）才允许改状态。错误信息本身照常落库 ——
+        丢错误比晚一点展示更糟，但"晚到的错误"不该推翻"已经就绪的结果"。
+        """
+        current = repo.get_run(run_id, with_steps=False)
+        current_status = (current or {}).get("status")
+        if current_status in writable:
+            return repo.update_run(run_id, status=status, **fields)
+        logger.warning(
+            f"状态回写晚于后续阶段（当前 {current_status}，拟写 {status}），"
+            f"只落数据、不回退状态 run={run_id}"
+        )
+        return repo.update_run(run_id, **fields)
+
     def _write_clarify_status(self, run_id: str, **fields: Any) -> dict[str, Any]:
         """写澄清结果，但**绝不把已经推进的状态拉回去**。
 
@@ -787,15 +902,12 @@ class WorkflowService:
         状态推进必须是**单调**的：澄清只允许在还没进入规划之后的阶段时写状态。
         `clarify` 数据本身照常落库 —— 丢数据比晚一点展示更糟。
         """
-        current = repo.get_run(run_id, with_steps=False)
-        status = (current or {}).get("status")
-        if status in _CLARIFY_WRITABLE_STATUSES:
-            return repo.update_run(run_id, status="clarifying", **fields)
-        logger.warning(
-            f"澄清结果晚于后续阶段到达（当前状态 {status}），"
-            f"只落库澄清数据、不回退状态 run={run_id}"
+        return self._write_status_monotonic(
+            run_id,
+            status="clarifying",
+            writable=_CLARIFY_WRITABLE_STATUSES,
+            **fields,
         )
-        return repo.update_run(run_id, **fields)
 
     def _folder_summary(self, run: dict[str, Any]) -> Optional[dict[str, Any]]:
         """工作区绑定文件夹的清单（未绑定/不可读时 None）。
@@ -1512,6 +1624,7 @@ class WorkflowService:
         state.setdefault("sufficient", False)
         return state
 
+    @_serialize_per_run("clarify")
     async def stream_clarify(
         self, *, run_id: str, username: str, trace_id: str = "-"
     ) -> AsyncIterator[str]:
@@ -1576,7 +1689,14 @@ class WorkflowService:
 
             error = final_state.get("error")
             if error:
-                repo.update_run(run_id, status="failed", error=error)
+                # 状态单调：任务书若已就绪（awaiting_approval），澄清流的错误
+                # 不能把它拉回 failed —— 否则批准按钮消失且无任何提示。
+                self._write_status_monotonic(
+                    run_id,
+                    status="failed",
+                    writable=_CLARIFY_WRITABLE_STATUSES,
+                    error=error,
+                )
                 settled = True
                 yield sse_frame(
                     {
@@ -1839,6 +1959,7 @@ class WorkflowService:
             return "", [], summaries
         return context, notes, summaries
 
+    @_serialize_per_run("plan")
     async def stream_plan(
         self, *, run_id: str, username: str, trace_id: str = "-"
     ) -> AsyncIterator[str]:
@@ -1910,7 +2031,13 @@ class WorkflowService:
             error = final_state.get("error")
             if error or not final_state.get("plan"):
                 message = error or "模型没有产出有效的任务书"
-                repo.update_run(run_id, status="failed", error=message)
+                # 同上：规划流的错误不能推翻已经就绪的状态。
+                self._write_status_monotonic(
+                    run_id,
+                    status="failed",
+                    writable=_PLAN_WRITABLE_STATUSES,
+                    error=message,
+                )
                 settled = True
                 yield sse_frame(
                     {

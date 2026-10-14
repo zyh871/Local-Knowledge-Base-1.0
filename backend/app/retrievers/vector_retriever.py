@@ -88,5 +88,8 @@ class VectorRetriever:
             return 0
         try:
             return self.vectorstore._collection.count()
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            # ⚠️ 不能静默返回 0：那样「读取失败」与「知识库真的空」在界面上
+            # 完全无法区分 —— 用户会以为文档丢了，排查时也拿不到任何线索。
+            logger.warning(f"读取向量库文档数失败，按 0 处理: {exc}")
             return 0

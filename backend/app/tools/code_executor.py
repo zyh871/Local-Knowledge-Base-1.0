@@ -14,9 +14,9 @@
 """
 
 import ctypes
+import io
 import logging
 import os
-import sys
 import threading
 from typing import Any, Dict
 
@@ -80,21 +80,24 @@ def _execute_with_timeout(
 
     def _run():
         local_vars: Dict[str, Any] = {}
+        # 输出重定向走**局部注入**，而不是替换 `sys.stdout`：
+        # 后者是进程级全局，并发请求会互相踩（实测 12/12 轮出现一侧丢失、
+        # 换编排后还会串台）。局部注入让每个请求有自己的 buffer，天然隔离。
+        # 详见 code_sandbox._make_redirected_print 的说明。
+        buf = io.StringIO()
+        builtins_map = build_runtime_builtins(allowed, print_target=buf)
         # `__name__` 必须给：`exec` 不会自动带上它，而
         # `if __name__ == "__main__":` 是生成脚本里最常见的一句 ——
         # 不给就报 `NameError: name '__name__' is not defined`，
         # 用户会以为"AI 写的代码是错的"。
         global_vars = {
-            "__builtins__": build_runtime_builtins(allowed),
+            "__builtins__": builtins_map,
             "__name__": "__main__",
+            # 两层都注入：`__builtins__['print']` 这类取法也要被重定向，
+            # 否则那条路仍会写真实终端（输出逃逸、不被捕获）。
+            "print": builtins_map["print"],
         }
-        old_stdout = None
         try:
-            import io
-
-            old_stdout = sys.stdout
-            buf = io.StringIO()
-            sys.stdout = buf
             exec(code, global_vars, local_vars)
             result["stdout"] = buf.getvalue()[:_MAX_OUTPUT]
         except _TimeoutError:
@@ -102,8 +105,6 @@ def _execute_with_timeout(
         except Exception as e:
             result["error"] = f"{type(e).__name__}: {e}"
         finally:
-            if old_stdout is not None:
-                sys.stdout = old_stdout
             for k, v in local_vars.items():
                 if not k.startswith("_"):
                     try:

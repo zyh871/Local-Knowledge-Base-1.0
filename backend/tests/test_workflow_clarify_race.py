@@ -182,3 +182,96 @@ class TestClarifyDoesNotRegressStatus:
         assert resp.status_code == 200, resp.text
         after = client.get(f"/workflow/runs/{run_id}", headers=auth_headers).json()
         assert after["status"] == "awaiting_approval"
+
+
+class TestErrorPathDoesNotRegressStatus:
+    """★ 上面那组覆盖「迟到的**成功**结果」；这一组覆盖「迟到的**错误**」。
+
+    这是同一个根因的另一半：澄清流与规划流在拿到 `final_state["error"]` 时
+    原本是**无条件**写 `status="failed"`。于是只要用户先点了「生成任务书」，
+    随后澄清/规划那条流带着错误回来，就会把已经就绪的任务**静默降级**成
+    失败态 —— 批准按钮消失，界面上没有任何错误提示。
+
+    修复后状态回写统一走 `_write_status_monotonic()`：状态照旧单调，
+    错误信息照旧落库。下面三条分别验证「不许回退」「数据不丢」「不许过度保护」。
+    """
+
+    def test_clarify_error_does_not_regress_status(
+        self, client, auth_headers, wf_env, workspace
+    ):
+        """澄清流报错，不得把 awaiting_approval 拉回 failed。"""
+        from app.repositories import workflow_repo as repo
+        from app.services.workflow_service import (
+            _CLARIFY_WRITABLE_STATUSES,
+            WorkflowService,
+        )
+
+        run = _new_run(client, auth_headers, workspace)
+        repo.update_run(run["id"], status="awaiting_approval")
+
+        WorkflowService()._write_status_monotonic(
+            run["id"],
+            status="failed",
+            writable=_CLARIFY_WRITABLE_STATUSES,
+            error="模拟澄清流报错",
+        )
+
+        after = repo.get_run(run["id"], with_steps=False)
+        assert after["status"] == "awaiting_approval", (
+            "错误路径把已就绪的状态拉回了 —— 批准按钮会消失且无任何提示"
+        )
+        assert after["error"] == "模拟澄清流报错", "错误信息必须照常落库，不能丢"
+
+    def test_plan_error_does_not_regress_status(
+        self, client, auth_headers, wf_env, workspace
+    ):
+        """规划流报错，同样不得回退已就绪的状态。"""
+        from app.repositories import workflow_repo as repo
+        from app.services.workflow_service import (
+            _PLAN_WRITABLE_STATUSES,
+            WorkflowService,
+        )
+
+        run = _new_run(client, auth_headers, workspace)
+        repo.update_run(run["id"], status="awaiting_approval")
+
+        WorkflowService()._write_status_monotonic(
+            run["id"],
+            status="failed",
+            writable=_PLAN_WRITABLE_STATUSES,
+            error="模拟规划流报错",
+        )
+
+        after = repo.get_run(run["id"], with_steps=False)
+        assert after["status"] == "awaiting_approval"
+        assert after["error"] == "模拟规划流报错"
+
+    def test_error_still_marks_failed_when_not_advanced(
+        self, client, auth_headers, wf_env, workspace
+    ):
+        """★ 反向保护：还没推进到后续阶段时，错误**仍然要**把任务标成失败。
+
+        单调保护只该拦「迟到的错误」，不该把正常的失败记录一起吞掉 ——
+        那会让真正失败的任务看起来还在进行中。
+        """
+        from app.repositories import workflow_repo as repo
+        from app.services.workflow_service import (
+            _PLAN_WRITABLE_STATUSES,
+            WorkflowService,
+        )
+
+        run = _new_run(client, auth_headers, workspace)
+        repo.update_run(run["id"], status="draft")
+
+        WorkflowService()._write_status_monotonic(
+            run["id"],
+            status="failed",
+            writable=_PLAN_WRITABLE_STATUSES,
+            error="规划真的失败了",
+        )
+
+        after = repo.get_run(run["id"], with_steps=False)
+        assert after["status"] == "failed", (
+            "未推进的任务出错时必须标记 failed —— 否则失败会被静默吞掉"
+        )
+        assert after["error"] == "规划真的失败了"

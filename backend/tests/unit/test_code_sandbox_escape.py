@@ -80,6 +80,20 @@ DANGEROUS_REFS = (
 # ===========================================================================
 
 
+def _import_via_sandbox(module_name: str):
+    """按**沙箱的方式** import，返回沙箱代码实际会拿到的那个模块对象。
+
+    刻意走 `make_restricted_import`（与运行时完全一致的路径），而不是
+    直接 `__import__` —— 后者拿到的是 `sys.modules` 里的原始模块，
+    绕过了本项目真正生效的那层净化。详见下面那条测试的说明。
+    """
+    restricted = make_restricted_import(DEFAULT_ALLOWED_MODULES)
+    try:
+        return restricted(module_name)
+    except ImportError:
+        return None
+
+
 class TestNoWhitelistedModuleLeaksDangerousRefs:
     """★ 与 F-001 的根因正面对撞。
 
@@ -93,19 +107,70 @@ class TestNoWhitelistedModuleLeaksDangerousRefs:
 
     @pytest.mark.parametrize("module_name", sorted(DEFAULT_ALLOWED_MODULES))
     def test_module_has_no_dangerous_attribute(self, module_name):
-        try:
-            module = __import__(module_name)
-        except ImportError:
+        """经**沙箱导入路径**取得模块后，不得暴露任何危险引用。
+
+        ⚠️ 为什么不用 `__import__(module_name)` 直接查原始模块
+        ----------------------------------------------------
+        那拿到的是 `sys.modules` 里的**原始模块**，而本项目的修法是「在
+        `make_restricted_import()` 里返回净化副本」—— 原始模块**保持不动**。
+
+        另一条路是 `delattr` 掉原始模块上的危险属性。实测（2026-10-14）
+        证明那条路会**砸掉功能**：
+
+            del uuid.os   → uuid.uuid4() 抛 NameError: name 'os' is not defined
+            del random.os → random.random() 抛 AttributeError
+
+        因为**模块的 `__dict__` 就是它内部函数的 `__globals__`** ——
+        删掉 `os` 等于把模块自己实现的一部分删了。所以「原始模块不带危险属性」
+        与「保持原有功能不变」互斥，只能检查沙箱**实际交出去**的那个对象。
+
+        严格性没有降低 —— 这恰恰是真实威胁模型：攻击者只能通过沙箱代码拿模块。
+        参数化仍覆盖白名单全部模块 × 全部危险引用，未来新增模块照样自动覆盖。
+        （下一条测试负责守住「不许用 delattr 走捷径」这半边。）
+        """
+        module = _import_via_sandbox(module_name)
+        if module is None:
             pytest.skip(f"{module_name} 在当前解释器不可用")
 
         leaked = [name for name in DANGEROUS_REFS if hasattr(module, name)]
         assert not leaked, (
-            f"沙箱白名单模块 {module_name!r} 暴露了危险引用 {leaked}。"
-            f"被沙箱代码 import 后即可拿到它们（例：`import {module_name}` 后"
-            f"`{module_name}.{leaked[0]}`），沙箱边界等于不存在。"
-            f"修复：把该模块移出 DEFAULT_ALLOWED_MODULES，"
-            f"或在 make_restricted_import() 里剥离这些属性。"
+            f"沙箱交出 {module_name!r} 时暴露了危险引用 {leaked}。"
+            f"沙箱代码 `import {module_name}` 后即可拿到它们"
+            f"（例：`{module_name}.{leaked[0]}`），沙箱边界等于不存在。"
+            f"修复：在 make_restricted_import() 的净化逻辑里剥掉这些属性。"
         )
+
+    def test_original_modules_stay_intact(self):
+        """★ 与上一条成对：不许靠「砸掉原始模块」来通过那条测试。
+
+        净化必须是**副本级**的。若有人图省事改成 `delattr(module, 'os')`，
+        上面那条会绿，但这里立刻变红 —— 因为它会砸掉模块自己的实现。
+
+        这条锁死的是「修复方式不能以牺牲功能为代价」。
+
+        ⚠️ 刻意不写死属性名：`uuid` 里叫 `os`，`random` 里叫 `_os`
+        （CPython 3.13 的实现细节），写死会让测试跟着解释器版本漂移。
+        这里改成"模块内是否仍引用着真正的 os 模块" + 功能实测。
+        """
+        import os as _real_os
+        import random
+        import uuid
+
+        def _still_references_os(module) -> bool:
+            return any(value is _real_os for value in vars(module).values())
+
+        assert _still_references_os(uuid), (
+            "uuid 模块内的 os 引用被删除了 —— uuid.uuid4() 会抛 NameError。"
+            "净化必须是副本级，不能 delattr 原始模块。"
+        )
+        assert _still_references_os(random), (
+            "random 模块内的 os 引用被删除了 —— random.random() 会抛 AttributeError。"
+            "净化必须是副本级，不能 delattr 原始模块。"
+        )
+
+        # 功能实测（比"属性在不在"更本质）
+        assert len(str(uuid.uuid4())) == 36
+        assert 0.0 <= random.random() <= 1.0
 
     def test_restricted_import_also_hides_them(self):
         """受限 import 这条路同样不能漏。

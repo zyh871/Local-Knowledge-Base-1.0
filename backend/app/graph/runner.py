@@ -12,11 +12,22 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, AsyncIterator, Optional
 
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+#: 流式执行时，两个事件之间的最长等待时间（秒）。
+#:
+#: 为什么是「空闲超时」而不是「总超时」：一次问答里真正耗时的是 LLM 生成，
+#: 而它的长度取决于回答篇幅，没法给一个既安全又不误杀的**总**时限。
+#: 卡死则不同 —— 卡死表现为**长时间没有任何事件**。所以盯「两次事件之间的
+#: 间隔」既能兜住卡死，又不会因为"回答写得太长"而被误杀。
+#:
+#: 取 180s：远大于正常分片间隔（毫秒级），也大于单个 LLM 调用的常见时长。
+_STREAM_IDLE_TIMEOUT_SECONDS = 180.0
 
 
 def thread_id_for(conversation_id: str, username: str) -> str:
@@ -129,15 +140,40 @@ async def stream_graph(
         model=model,
     )
 
-    async for mode, payload in graph.astream(
-        state, config=config, stream_mode=["updates", "custom"]
-    ):
-        if mode == "custom":
-            # 节点内通过 get_stream_writer() 推出的事件（intent/sources/chunk/...）
-            yield payload
-        elif mode == "updates":
-            for node_name in (payload or {}).keys():
-                logger.debug(f"[{trace_id}] 节点完成: {node_name}")
+    # 用「空闲超时」包住迭代：`graph.astream()` 只是异步迭代器，
+    # 没法直接丢进 `asyncio.wait_for`，所以按「取下一个事件」逐个计时。
+    # 若某个节点卡住（网络挂起 / 死循环），这里会中断并抛出，
+    # 而不是让整条 SSE 静默挂在那里 —— 后者用户看到的是"一直在转圈"。
+    stream = graph.astream(state, config=config, stream_mode=["updates", "custom"])
+    try:
+        while True:
+            try:
+                mode, payload = await asyncio.wait_for(
+                    stream.__anext__(), timeout=_STREAM_IDLE_TIMEOUT_SECONDS
+                )
+            except StopAsyncIteration:
+                break
+            if mode == "custom":
+                # 节点内通过 get_stream_writer() 推出的事件（intent/sources/chunk/...）
+                yield payload
+            elif mode == "updates":
+                for node_name in (payload or {}).keys():
+                    logger.debug(f"[{trace_id}] 节点完成: {node_name}")
+    except asyncio.TimeoutError as exc:
+        logger.error(
+            f"[{trace_id}] 图执行超过 {_STREAM_IDLE_TIMEOUT_SECONDS:.0f} 秒无事件，已中断"
+        )
+        raise TimeoutError(
+            f"生成超时（{_STREAM_IDLE_TIMEOUT_SECONDS:.0f} 秒内没有进展），请重试"
+        ) from exc
+    finally:
+        # 善后：中断时把底层异步生成器关掉，避免它继续挂在后台
+        aclose = getattr(stream, "aclose", None)
+        if aclose is not None:
+            try:
+                await aclose()
+            except Exception:  # noqa: BLE001 - 善后失败不影响主流程
+                pass
 
     snapshot = await graph.aget_state(config)
     values = dict(getattr(snapshot, "values", {}) or {})

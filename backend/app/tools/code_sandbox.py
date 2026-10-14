@@ -18,7 +18,8 @@ AST 校验解决误伤（只看得见真实的语法结构，看不见注释与�
 from __future__ import annotations
 
 import ast
-from typing import Iterable
+import types
+from typing import Any, Iterable
 
 __all__ = [
     "DEFAULT_ALLOWED_MODULES",
@@ -131,6 +132,33 @@ FORBIDDEN_CALLS: frozenset[str] = frozenset(
     }
 )
 
+#: 白名单模块上**不该被沙箱代码拿到**的属性名 —— 也就是危险模块自己的名字。
+#:
+#: 与 `FORBIDDEN_ATTRS` 的分工：
+#: * `FORBIDDEN_ATTRS` 拦的是「逃逸用的双下划线属性」（`__globals__` 之类）；
+#: * 这里拦的是「白名单模块自己挂着的危险模块引用」—— `uuid.os`、`random.os`、
+#:   `enum.sys` … 拿到任意一个，沙箱边界就等于不存在。
+#:
+#: 为什么需要静态层也拦（运行时已经剥离了）：
+#: 运行时剥离是**兜底**，静态拦截是**快速反馈**。只靠运行时的话，用户看到的
+#: 是"校验通过、执行时报 AttributeError"，而真正的原因（这行代码在试图越狱）
+#: 被淹没在报错里。两层都拦，纵深才成立。
+DANGEROUS_MODULE_ATTRS: frozenset[str] = frozenset(
+    {
+        "builtins",
+        "ctypes",
+        "importlib",
+        "marshal",
+        "multiprocessing",
+        "os",
+        "pickle",
+        "shutil",
+        "socket",
+        "subprocess",
+        "sys",
+    }
+)
+
 #: 运行时注入给被 exec 代码的 builtins 白名单。
 #
 # ⚠️ 这里比"纯算术"宽：`__build_class__` 不给的话连 `class A: pass` 都会报
@@ -204,34 +232,154 @@ def describe_policy(allowed_modules: Iterable[str]) -> str:
     )
 
 
+#: 模块对象上**必须剥掉**的双下划线属性。
+#:
+#: 它们在正常代码里没有任何用处，但都能重新拿回加载能力：
+#: `__loader__` / `__spec__` 可以加载任意模块，`__builtins__` 能拿回完整内置，
+#: `__cached__` 泄露磁盘路径。
+_DANGEROUS_MODULE_DUNDER: frozenset[str] = frozenset(
+    {"__builtins__", "__cached__", "__loader__", "__spec__"}
+)
+
+
+def _sanitize_module(
+    module: types.ModuleType,
+    allowed_top: set[str],
+    cache: dict[str, types.ModuleType],
+) -> types.ModuleType:
+    """返回模块的**净化副本**：剥掉指向「非白名单模块」的属性引用。
+
+    为什么必须做这一层
+    ------------------
+    AST 校验管得住代码里写的 `import`，管不住**模块自己在 `__dict__` 里挂了什么**。
+    实测（2026-10-14，逐个遍历白名单 33 个模块）**其中 9 个**持有对 os / sys 的
+    直接引用：
+
+        uuid(os, sys) · random(os) · collections(_sys) · dataclasses(sys)
+        enum(sys) · fractions(sys) · pprint(_sys) · statistics(sys) · typing(sys)
+
+    于是 `import uuid` 之后 `uuid.os.system("...")` 就能执行任意命令 ——
+    `os` 不在 `FORBIDDEN_ATTRS` 里、`system` 也不在 `FORBIDDEN_CALLS` 里，
+    **静态校验完全看不见它**。
+
+    ⚠️ 判断依据是「引用是否指向白名单模块」，**不是**维护一份 os/sys 黑名单。
+    理由是黑名单必然漏：上表 9 个模块中，最初的审查只认出 6 个（漏了
+    `random` / `collections` / `pprint`，而 `random` 泄的正是 `os`）。
+    沙箱的语义本来就是「只准用白名单模块」，所以**任何指向非白名单模块的
+    属性引用都该剥掉** —— 这样将来新增模块也不会再漏。
+
+    为什么返回副本，而不是 `delattr` 原模块
+    --------------------------------------
+    `sys.modules` 是全局共享的。删真实模块的属性会**污染应用自身** ——
+    例如 `uuid.os` 被删掉后，若某个第三方库恰好依赖它就会莫名报错。
+    副本只在沙箱内可见，出了这次 exec 即失效。
+
+    副本会不会影响正常功能？
+    ----------------------
+    不会。模块里的函数 / 类对象是**按引用复制**的，它们自带 `__globals__`
+    （仍指向原模块的命名空间），所以 `math.sqrt` / `uuid.uuid4()` /
+    `json.dumps` 的行为完全不变。被剥掉的只是 `uuid.os` 这类"顺手的引用"。
+    """
+    name = getattr(module, "__name__", "")
+    cached = cache.get(name)
+    if cached is not None:
+        return cached
+
+    safe = types.ModuleType(name)
+    for key, value in vars(module).items():
+        if key in _DANGEROUS_MODULE_DUNDER:
+            continue
+        if isinstance(value, types.ModuleType):
+            top = getattr(value, "__name__", "").split(".")[0]
+            if top not in allowed_top:
+                # 指向非白名单模块 —— 留着就是逃逸通道
+                continue
+        safe.__dict__[key] = value
+
+    # 保留元信息，避免依赖 `__doc__` / `__name__` 的代码行为漂移
+    safe.__dict__.setdefault("__doc__", getattr(module, "__doc__", None))
+    safe.__dict__.setdefault("__package__", getattr(module, "__package__", None))
+
+    cache[name] = safe
+    return safe
+
+
 def make_restricted_import(allowed_modules: Iterable[str]):
-    """造一个只放行白名单模块的 `__import__`。
+    """造一个只放行白名单模块的 `__import__`，并**净化**放行模块的属性。
 
     ⚠️ **必须要有它**：AST 校验只拦得住"写在源码里的 import"，
     而 `exec` 的 `import` 语句在运行时是靠 `builtins.__import__` 实现的。
     如果 builtins 里根本没有 `__import__`，那么**连白名单里的 `import math`
     都会失败**（报 `__import__ not found`）—— 校验放行、运行时又跑不了，
     用户会以为"程序坏了"。这一层让两边一致。
+
+    另外还负责**把模块净化后再交出去**（见 `_sanitize_module`）：
+    白名单里的模块自己可能挂着 os / sys 引用，那是静态校验看不到的洞。
+    净化副本按模块名缓存，同一次 exec 内重复 import 不会反复复制。
     """
     import builtins
 
     allowed = {m.split(".")[0] for m in allowed_modules}
     real_import = builtins.__import__
+    cache: dict[str, types.ModuleType] = {}
 
     def _restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
         if level and level > 0:
             raise ImportError("沙箱不允许相对 import")
         if name.split(".")[0] not in allowed:
             raise ImportError(f"沙箱不允许 import「{name}」")
-        return real_import(name, globals, locals, fromlist, level)
+        module = real_import(name, globals, locals, fromlist, level)
+        if isinstance(module, types.ModuleType):
+            return _sanitize_module(module, allowed, cache)
+        return module
 
     return _restricted_import
 
 
-def build_runtime_builtins(allowed_modules: Iterable[str]) -> dict[str, object]:
-    """运行时注入的 builtins：白名单内置函数 + 受限 `__import__`。"""
+def _make_redirected_print(target: Any):
+    """造一个把输出写进 `target` 的 `print`。
+
+    ## ⚠️ 为什么不用「替换 `sys.stdout`」来实现重定向
+
+    那是**进程级**的全局替换：并发请求会互相踩。实测（2026-10-14）两个
+    并发请求下 **12/12 轮**出现一侧输出丢失；换编排后还能出现串台
+    （A 的产出出现在 B 的响应里）。根因是 `sys.stdout = X` 改的是模块属性，
+    而"我进入时那个"在并发下会被别人覆盖，`finally` 恢复回去的可能是
+    一个已经废弃的中间值 —— 于是 `sys.stdout` 永久指向一个被丢弃的 StringIO。
+
+    改成把 `print` **局部注入 exec 的命名空间**：每个请求有自己的 `target`，
+    天然隔离，不存在恢复配对问题。实测 30/30 轮零丢失、零串写，
+    且 `sys.stdout` 全程未被赋值。
+
+    ## 为什么 builtins 与 globals 两层都要注入
+
+    只注入 globals 的话，`__builtins__['print']` 这类取法仍能拿到
+    真正写终端的那个（输出逃逸，不被捕获）。两层都换掉，才算干净。
+    """
+
+    def _sandbox_print(*args, sep=" ", end="\n", file=None, flush=False):
+        if file is not None:
+            # 允许指定 file 就等于允许把输出写到沙箱外（真实 stdout 也在其中）
+            raise ValueError("沙箱中的 print 不支持 file 参数")
+        target.write(sep.join(str(arg) for arg in args) + end)
+        return None
+
+    return _sandbox_print
+
+
+def build_runtime_builtins(
+    allowed_modules: Iterable[str], print_target: Any = None
+) -> dict[str, object]:
+    """运行时注入的 builtins：白名单内置函数 + 受限 `__import__`。
+
+    `print_target` 非空时，把 `print` 换成写往该目标的版本 —— 用于让被 exec
+    的代码的输出去向可控，而**不必**动进程级的 `sys.stdout`（见
+    `_make_redirected_print` 的说明）。
+    """
     builtins_map = dict(SAFE_BUILTINS)
     builtins_map["__import__"] = make_restricted_import(allowed_modules)
+    if print_target is not None:
+        builtins_map["print"] = _make_redirected_print(print_target)
     return builtins_map
 
 
@@ -259,6 +407,16 @@ def validate_code(
 
     issues: list[str] = []
 
+    # 模块的本地名集合：`import uuid` → {uuid}；`import uuid as U` → {U}。
+    # 逃逸检测要靠它 —— `U.os` 和 `uuid.os` 是同一件事，只认字面量会漏掉别名写法。
+    module_names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                top = alias.name.split(".")[0]
+                if top in allowed:
+                    module_names.add(alias.asname or top)
+
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -282,11 +440,28 @@ def validate_code(
                     f"第 {node.lineno} 行：不允许 import「{node.module}」。"
                     f"{describe_policy(allowed)}"
                 )
+            else:
+                # `from uuid import os` 与 `uuid.os` 等价 —— 同样等于拿到 os 模块
+                for alias in node.names:
+                    if alias.name in DANGEROUS_MODULE_ATTRS:
+                        issues.append(
+                            f"第 {node.lineno} 行：不允许从「{node.module}」导入"
+                            f"「{alias.name}」—— 它是危险模块，拿到即等于沙箱不存在。"
+                        )
         elif isinstance(node, ast.Attribute):
             if node.attr in FORBIDDEN_ATTRS:
                 issues.append(
                     f"第 {node.lineno} 行：不允许访问属性「{node.attr}」——"
                     f"它可以绕过沙箱限制拿到任意对象。"
+                )
+            elif node.attr in DANGEROUS_MODULE_ATTRS and _root_name(node) in module_names:
+                # 白名单模块自己挂着的危险引用（`uuid.os` / `random.os` / `enum.sys`…）。
+                # 运行时已经会剥离它们，这里拦是为了让用户尽早看到「这行在越狱」，
+                # 而不是等到执行时报一句难懂的 AttributeError。
+                root = _root_name(node)
+                issues.append(
+                    f"第 {node.lineno} 行：不允许访问「{root}.{node.attr}」——"
+                    f"「{node.attr}」是危险模块，拿到即等于沙箱不存在。"
                 )
         elif isinstance(node, ast.Call):
             func = node.func
