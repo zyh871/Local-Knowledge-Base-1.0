@@ -37,6 +37,35 @@
  "/conversations/{conversation_id}/share": [
   "post"
  ],
+ "/creations": [
+  "get",
+  "post"
+ ],
+ "/creations/edits": [
+  "post"
+ ],
+ "/creations/options": [
+  "get"
+ ],
+ "/creations/reference": [
+  "post"
+ ],
+ "/creations/videos": [
+  "post"
+ ],
+ "/creations/videos/from-image": [
+  "post"
+ ],
+ "/creations/{creation_id}": [
+  "delete",
+  "get"
+ ],
+ "/creations/{creation_id}/file": [
+  "get"
+ ],
+ "/creations/{creation_id}/image": [
+  "get"
+ ],
  "/documents": [
   "get"
  ],

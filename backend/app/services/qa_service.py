@@ -81,12 +81,13 @@ class QAService:
         force_search: bool,
         trace_id: str,
         model: Optional[str] = None,
+        thinking: bool = False,
     ) -> AnswerOutcome:
         conv_id = conversation_id or "default"
         try:
             logger.info(f"[{trace_id}] 收到问题: {question[:50]}... (model={model or '默认'})")
             result = await self._invoke(
-                question, conv_id, username, force_search, trace_id, model
+                question, conv_id, username, force_search, trace_id, model, thinking
             )
             result["trace_id"] = trace_id
             logger.info(
@@ -117,6 +118,7 @@ class QAService:
         force_search: bool,
         trace_id: str,
         model: Optional[str] = None,
+        thinking: bool = False,
     ) -> dict[str, Any]:
         """执行状态图。图是唯一的编排实现（旧 router 已删除）。"""
         if self.graph is None:
@@ -133,6 +135,7 @@ class QAService:
             force_search=force_search,
             trace_id=trace_id,
             model=model,
+            thinking=thinking,
             redis=self.redis,
         )
 
@@ -149,17 +152,19 @@ class QAService:
         force_search: bool,
         trace_id: str,
         model: Optional[str] = None,
+        thinking: bool = False,
     ) -> AsyncIterator[str]:
         """产出 SSE 帧。异常一律转成 final 事件（响应头已发出，无法改状态码）。"""
         conv_id = conversation_id or "default"
         try:
             logger.info(
-                f"[{trace_id}] 收到流式问题: {question[:50]}... (model={model or '默认'})"
+                f"[{trace_id}] 收到流式问题: {question[:50]}... "
+                f"(model={model or '默认'}, thinking={thinking})"
             )
             self._maybe_set_auto_title(conv_id, question, username)
 
             async for event in self._stream(
-                question, conv_id, username, force_search, trace_id, model
+                question, conv_id, username, force_search, trace_id, model, thinking
             ):
                 yield sse_frame({**event, "trace_id": trace_id})
 
@@ -191,6 +196,7 @@ class QAService:
         force_search: bool,
         trace_id: str,
         model: Optional[str] = None,
+        thinking: bool = False,
     ) -> AsyncIterator[dict[str, Any]]:
         if self.graph is None:
             raise RuntimeError("问答状态图未初始化，服务不可用")
@@ -206,6 +212,7 @@ class QAService:
             force_search=force_search,
             trace_id=trace_id,
             model=model,
+            thinking=thinking,
             redis=self.redis,
         ):
             yield event

@@ -22,6 +22,10 @@
 - **反馈收集**: 可对回答提交点赞 / 点踩与评论
 - **文档分享**: 生成只读分享链接，无需登录即可查看对话结论
 - **AI 工作流模式**: 多步骤任务规划与执行（manual 人工逐步审查 / auto 自动执行），内置代码沙箱、文件产出与本地文件系统绑定，高风险操作（执行代码、写文件）强制人工审批
+- **AI 创作（文生图 / 图生图）**: 提示词 + 画幅比例 + 风格预设出图；默认走 ModelScope（`Qwen/Qwen-Image`），图生图走 `Qwen/Qwen-Image-Edit`（上传源图直接改）。支持参考图转画面描述、历史作品与一键下载；产物落盘保存（上游临时链接会过期）。**图像与视频都用「提交任务 → 落 running 行 → 前端轮询」**，因为 ModelScope 免费推理是单并发排队，同步等待会先撞网关超时
+- **文生视频（智谱 CogVideoX-3）**: 提交任务 → 轮询 → 下载落盘，支持 720p/1080p（最高 4K）、5/10 秒、30/60fps、AI 音效。图像与视频的供应商可分别配置：当前图像走 ModelScope、视频走智谱
+- **视频能力可降级**: 未配置智谱 Key 时「视频」置灰并说明原因，不会给一个点了必然失败的按钮；ModelScope 的 Wan 系列模型代码仍在，但平台返回 `40212`（未开放），设 `MODELSCOPE_VIDEO_ENABLED=true` 可在开放后启用
+- **深度思考（推理过程可视化）**: 对话时把模型的推理过程通过独立 SSE 事件实时推给前端，按 DeepSeek 的方式折叠展示为「已思考（用时 N 秒）」；推理原文不写入对话记忆，可用开关关闭
 
 ## 技术栈
 
@@ -79,7 +83,7 @@
 │   └── .env                    # 环境变量配置（从 .env.example 复制）
 ├── frontend/                   # 前端界面（Vue 3 + Vite + Tailwind）
 │   ├── src/
-│   │   ├── views/              # 页面：Chat / Login / ModelSettings / SharedView / WorkView
+│   │   ├── views/              # 页面：Chat / Create / Login / ModelSettings / SharedView / WorkView
 │   │   ├── stores/             # Pinia 状态管理（chat 等）
 │   │   ├── router/             # 路由配置（含守卫）
 │   │   ├── components/         # 子组件
@@ -156,6 +160,28 @@ ACCESS_TOKEN_EXPIRE_MINUTES=1440
 # Tavily 联网搜索 API（可选，缺失时联网搜索功能不可用）
 TAVILY_API_KEY=your-tavily-key
 
+# ModelScope（魔搭）AIGC：文生图 / 图生图（当前图像供应商）
+MODELSCOPE_API_KEY=your-modelscope-token
+# 图像供应商（逗号分隔：modelscope / bailian / zhipu）
+CREATION_PROVIDERS=modelscope
+# 视频供应商（留空 = 沿用上面那行）
+CREATION_VIDEO_PROVIDERS=zhipu
+# 智谱 CogVideoX-3 视频参数（quality=画质优先 / speed=速度优先）
+ZHIPU_VIDEO_MODEL=cogvideox-3
+ZHIPU_VIDEO_QUALITY=quality
+ZHIPU_VIDEO_WITH_AUDIO=true
+# ModelScope 视频是否启用。⚠️ 当前对账号返回 40212（未开放），故关闭
+MODELSCOPE_VIDEO_ENABLED=false
+
+# 阿里云百炼（DashScope）：图像 / 视频（可选；不在 CREATION_PROVIDERS 里就不生效）
+BAILIAN_API_KEY=your-bailian-key
+BAILIAN_IMAGE_MODEL=wanx2.1-t2i-turbo
+BAILIAN_VIDEO_MODEL=wan2.2-t2v-plus
+
+# 深度思考（推理过程可视化）。THINKING_MODEL 必须是会返回 reasoning_content 的模型
+THINKING_ENABLED=true
+THINKING_MODEL=glm-4.5
+
 # CORS 白名单（Docker 部署需包含前端来源）
 CORS_ORIGINS=http://localhost,http://localhost:80,http://localhost:5173,http://localhost:5174,http://127.0.0.1
 ```
@@ -194,6 +220,8 @@ npm run dev
 前端启动后访问：<http://localhost:5173>
 
 > Vite 开发服务器已配置代理：`/api/*` → `http://127.0.0.1:8000`，前端代码中请求 `/api/xxx` 会自动转发到后端。
+>
+> 后端不在 8000（例如 8000 被别的项目占用）时，在 `frontend/.env` 里设 `VITE_API_TARGET=http://127.0.0.1:8001`。**这个覆盖是"粘性"的**：后端回到 8000 后如果忘了删，前端就会一直打向旧端口，表现为 `ECONNREFUSED 127.0.0.1:8001`。为避免这种情况，`vite.config.js` 会在启动时探测该地址：**不可达则自动回落到 8000 并打印警告**，同时启动日志会明确写出本次代理目标（`➜ [vite] API 代理: /api → ...`）。
 
 ***
 
@@ -361,6 +389,17 @@ docker run -d --name rag-backend -p 8000:8000 --env-file ../.env rag-backend:lat
 | 系统 | GET | `/stats` | 系统统计 |
 | 系统 | GET | `/example-questions` | 示例问题 |
 | 工作流 | — | `/workflow/*` | AI 工作流（详见下文） |
+| 创作 | GET | `/creations` | 创作历史 |
+| 创作 | POST | `/creations` | 提交文生图任务（ModelScope 立即返回 running，轮询进度） |
+| 创作 | POST | `/creations/edits` | 图生图（multipart：源图 + 编辑指令） |
+| 创作 | POST | `/creations/videos` | 提交文生视频任务（立即返回，轮询进度） |
+| 创作 | POST | `/creations/videos/from-image` | 图生视频（multipart：源图） |
+| 创作 | GET | `/creations/options` | 图像/视频模型、比例、风格、能力开关 |
+| 创作 | POST | `/creations/reference` | 参考图转画面描述 |
+| 创作 | GET | `/creations/{id}` | 查询单个作品（图片 / 视频任务进度） |
+| 创作 | GET | `/creations/{id}/file` | 读取作品文件（图片 / 视频，需鉴权） |
+| 创作 | GET | `/creations/{id}/image` | 读取图片（兼容旧地址） |
+| 创作 | DELETE | `/creations/{id}` | 删除作品 |
 
 ### 认证接口
 
@@ -665,6 +704,72 @@ data: {"type": "final", "content": {"answer": "...", "data_source": "vision", "i
 **POST** `/feedback` — 提交反馈（`{"conversation_id": "...", "rating": "up", "comment": "..."}`）。
 
 **GET** `/feedback/list` — 反馈列表（管理员）。
+
+### AI 创作接口
+
+创作与对话、工作流平行，数据存独立的 `data/creations.db`，媒体文件落在 `data/creations/`。
+
+**统一走「提交 → 轮询」**：`POST /creations`、`POST /creations/edits`、`POST /creations/videos`、`POST /creations/videos/from-image` 都只提交任务并立刻返回一条 `status=running` 的落库记录；前端每 4 秒 `GET /creations/{id}`，后端在查询时向上游问一次，完成则下载产物回写记录（`status=done` + `media_url`）。
+
+为什么不再同步等待：ModelScope 的免费推理是**单并发排队**的，实测同一账号排队十几分钟很常见。把这段等待挂在 HTTP 请求上，网关会先超时 —— 用户看到 502，而图片其实已经生成并计费了。
+
+上游（ModelScope / 智谱 / 百炼）给的都是**带签名的临时链接**，后端一律立刻下载落盘 —— 存 URL 等于给历史设一个「几天后自毁」的定时器。
+
+**参数说明**
+
+| 参数 | 取值 | 说明 |
+| --- | --- | --- |
+| `model` | `/creations/options` 的 `models` / `video_models` | 图像与视频的模型池不同，不能混用；`needs_image=true` 的模型必须配 `POST /creations/edits`（或 `videos/from-image`） |
+| `ratio` | 图像 `1:1 / 4:3 / 3:4 / 16:9 / 9:16`；视频 `16:9 / 9:16 / 1:1 / 4:3 / 3:4` | 映射到上游**白名单内**的像素尺寸（百炼传错尺寸会直接 FAILED） |
+| `style` | 9 种预设，空串 = 无风格 | 上游没有风格参数，实际是**追加提示词修饰**，不覆盖用户描述 |
+| `reference_desc` | 由 `POST /creations/reference` 得到 | 参考图先由视觉模型读成画面描述，再拼进提示词（图像编辑模型除外，它直接吃源图） |
+| `file` | 图生图 / 图生视频必填 | 以 multipart 上传，后端转 base64 data URL 传给 ModelScope（文档要求 `image_url` 为**列表**） |
+
+**模型清单（实测结果）**
+
+| 类别 | 模型 | 供应商 | 状态 | 用途 |
+| --- | --- | --- | --- | --- |
+| 文生图 | `Qwen/Qwen-Image` | ModelScope | ✅ 可用 | 从提示词生成图片，默认图像模型 |
+| 图生图 | `Qwen/Qwen-Image-Edit` | ModelScope | ✅ 可用 | 上传源图 + 编辑指令，直接改写这张图 |
+| 文生视频 | `cogvideox-3` | 智谱 | ✅ 可用 | 从提示词生成视频（默认 1920×1080 / 5s / 带音效） |
+| 文生视频 | `Wan-AI/Wan2.2-T2V-A14B` | ModelScope | ⛔ 40212 | 平台未对账号开放（代码就绪，开关可启用） |
+| 图生视频 | `Wan-AI/Wan2.2-I2V-A14B` | ModelScope | ⛔ 40212 | 同上 |
+
+**CogVideoX-3 参数**（服务端与独立脚本共用同一套收敛逻辑）：
+
+| 参数 | 取值 | 说明 |
+| --- | --- | --- |
+| `size` | `1280x720` / `720x1280` / `1024x1024` / `1920x1080` / `1080x1920` / `2048x1080` / `3840x2160` | 智谱是**枚举制**；我们比例表里的 4:3 / 3:4 会被收敛到最接近的官方尺寸（`app/rag/zhipu_video.py::_fit_size`） |
+| `quality` | `quality`（画质）/ `speed`（速度） | 默认 `quality`，可用 `ZHIPU_VIDEO_QUALITY` 改 |
+| `with_audio` | 布尔 | CogVideoX-3 可生成 AI 音效，默认开启 |
+| `duration` / `fps` | 5·10 / 30·60 | 服务端固定 5s / 30fps；独立脚本可传 |
+| `prompt` | ≤512 字符 | 超长会截断（智谱硬限制，超了 400） |
+| `image_url` | URL 或 Base64 | 图生视频首帧（可传两张做首尾帧） |
+
+单独跑一次（不启动整站）：
+
+```bash
+cd backend
+venv/Scripts/python.exe scripts/generate_video_cogvideox3.py \
+  --prompt "黄昏时分，一只纸飞机掠过城市天际线，暖色调，电影感" \
+  --size 1920x1080 --duration 5
+# 产物默认写到 output/cogvideox3.mp4
+```
+
+**错误处理**：上游失败按可读原因返回。ModelScope 的 `40212` 会被翻成「该模型未对当前账号开放 API 调用」——它**不是参数错误**，不解释清楚的话用户会一直去调参数；智谱的 `1001`（鉴权）/`1113`（余额）/`1301`（内容审核）/`1305`（限流）同样带人话说明。任务失败会写入记录的 `error` 字段并保留卡片 —— 静默消失比失败本身更难排查。
+
+### 深度思考（推理事件）
+
+`POST /ask/stream` 在 `thinking=true` 时，会在 `sources` 之后、`chunk` 之前插入 `reasoning` 事件流：
+
+```
+intent → sources → reasoning* → chunk* → final
+```
+
+- 后端用 `app/rag/thinking.py` 直连 OpenAI 兼容协议读取 `reasoning_content`（`ChatOpenAI` 会丢弃这个非标准字段，所以这条链路单独实现）。
+- 当前选中的模型若不会输出推理，后端会切到 `THINKING_MODEL`（默认 `glm-4.5`），并在 `final.model` 里回显实际模型。
+- `final` 额外携带 `thinking` / `reasoning` / `reasoning_ms`，用于折叠态展示「已思考（用时 N 秒）」。
+- 推理原文**不写入对话记忆**（它是模型的草稿，带进下一轮会干扰回答），也不入库；换设备后历史消息只保留答案。
 
 ### AI 工作流接口
 

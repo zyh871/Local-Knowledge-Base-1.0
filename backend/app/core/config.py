@@ -147,6 +147,8 @@ _MODEL_LABELS: dict[str, str] = {
     "glm-4-air": "均衡版 · 速度与质量兼顾",
     "glm-4-plus": "增强版 · 复杂推理与长回答更稳",
     "glm-4-long": "长文本版 · 超长上下文",
+    "glm-4.5": "深度思考 · 先推理再作答",
+    "glm-4.5-air": "深度思考 · 轻量快速",
     "gpt-4o-mini": "轻量 · 成本低",
     "gpt-4o": "旗舰 · 综合能力最强",
     "gpt-4-turbo": "高吞吐 · 长上下文",
@@ -154,6 +156,30 @@ _MODEL_LABELS: dict[str, str] = {
 
 # 各后端的视觉能力回退顺序（重试时可逐个降级）
 _ZHIPU_VISION_FALLBACKS = ("glm-4v-flash", "glm-4v-plus", "glm-4v")
+
+#: 具备 `images/generations` 能力的后端（与 rag/image_gen.py 的判定保持一致）。
+_IMAGE_CAPABLE_BACKENDS = ("zhipu", "openai", "modelscope")
+
+#: 会把 `reasoning_content` 流出来的后端。mock/local 没有这条通道 ——
+#: 给它们追加思考模型只会让用户选中一个永远没有思考过程的选项。
+_REASONING_BACKENDS = ("zhipu", "openai", "modelscope")
+
+# 各后端可选的图像模型候选。
+# ⚠️ 智谱的 CogView-3-Flash 免费且出图快，适合做默认值；
+# CogView-4 质量更好但按张计费，因此排在后面而不是默认。
+_BACKEND_IMAGE_CHOICES: dict[str, tuple[str, ...]] = {
+    "zhipu": ("cogview-3-flash", "cogview-4-250304"),
+    "openai": ("gpt-image-1", "dall-e-3"),
+    "modelscope": ("Qwen/Qwen-Image",),
+}
+
+_IMAGE_MODEL_LABELS: dict[str, str] = {
+    "cogview-3-flash": "CogView 3 Flash",
+    "cogview-4-250304": "CogView 4",
+    "gpt-image-1": "GPT Image 1",
+    "dall-e-3": "DALL·E 3",
+    "Qwen/Qwen-Image": "Qwen Image",
+}
 
 
 class ModelSettings(_BaseGroup):
@@ -168,6 +194,49 @@ class ModelSettings(_BaseGroup):
     llm_model: str = ""
     vision_model: str = ""
     query_model: str = Field("", description="用于分类/抽取的轻量模型，留空则复用 llm_model")
+
+    # ── 图像生成（AI 创作页）──────────────────────────────────────
+    #: 默认图像模型。CogView-3-Flash 免费且出图快，作为开箱默认值。
+    image_model: str = "cogview-3-flash"
+    #: 可选图像模型清单（逗号分隔），留空用后端内置候选。
+    #: 与 `LLM_CHOICES` 同一思路：只允许切换到这里列出的模型，
+    #: 防止任意模型名透传到上游（既可能触发计费，也可能根本不存在）。
+    image_models: str = ""
+    #: 单张图片的生成超时（秒）。图像比文本慢一个数量级，
+    #: 但也不能无限等 —— 用户需要知道「还在跑」与「已经废了」的区别。
+    image_timeout_seconds: float = Field(180.0, ge=10, le=600)
+
+    # ── 创作（文生图 / 图生图 / 文生视频 / 图生视频）──────────────
+    #: 允许使用的生成供应商（逗号分隔）：modelscope / bailian / zhipu。
+    #: 只有列在这里、且密钥可用的供应商，其模型才会出现在创作页 ——
+    #: 这比"全列出来让用户自己试"更省事：试错成本是我们的，不是用户的。
+    creation_providers: str = "modelscope"
+    #: 视频供应商白名单（留空 = 沿用 creation_providers）。
+    #: 图像与视频的可用供应商常常不一致：例如 ModelScope 只开放了出图，
+    #: 而智谱 CogVideoX-3 正好相反 —— 一个列表盖不住两种情况。
+    creation_video_providers: str = ""
+    #: 是否开放 ModelScope 的视频模型。
+    #: ⚠️ 默认 false：实测该账号调用 Wan/CogVideoX 全部返回 40212
+    #: （模型存在，但 API-Inference 未对账号开放）。平台开放后把这里改成 true 即可，
+    #: 调用链已经写好，不需要改代码。
+    modelscope_video_enabled: bool = False
+    #: 智谱视频模型（CogVideoX 系列）。实测 cogvideox-3 可用。
+    zhipu_video_model: str = "cogvideox-3"
+    #: quality（画质优先）/ speed（速度优先）
+    zhipu_video_quality: str = "quality"
+    #: CogVideoX-3 可带音效；打开后体积更大，关闭可省一点带宽
+    zhipu_video_with_audio: bool = True
+
+    # ── 深度思考（推理过程可视化）────────────────────────────────
+    #: 总开关。关掉后即使前端请求 `thinking=true` 也不启用 ——
+    #: 这是「不想为此付费」时的唯一开关，不必去改前端。
+    thinking_enabled: bool = True
+    #: 启用深度思考时使用的模型。当前只有 GLM-4.5 系列会在流里返回
+    #: `reasoning_content`；`glm-4-flash` 不会，选了也看不到思考过程。
+    thinking_model: str = "glm-4.5"
+    #: 具备推理输出的模型白名单（逗号分隔）。不在这个名单里的模型
+    #: 即使用 `thinking=true` 请求也不会退化成「假装在思考」。
+    thinking_models: str = "glm-4.5,glm-4.5-air,glm-4.6,glm-z1-air,glm-z1-flash"
 
     # 前端「模型切换」控件的候选清单；逗号分隔，留空则用后端内置候选。
     # 只允许切换到该清单内的模型 —— 防止任意模型名透传到上游。
@@ -262,7 +331,31 @@ class ModelSettings(_BaseGroup):
         elif self.llm_model in choices:
             # 把当前默认模型提到首位
             choices = [self.llm_model] + [m for m in choices if m != self.llm_model]
+
+        # 深度思考模型必须可选 —— 否则 `thinking=true` 时无法把请求切过去，
+        # 用户会看到「开关打开了但仍然没有思考过程」。
+        # 只在支持推理通道的后端追加：mock/local 没有这条通道，
+        # 塞一个永远不会返回 reasoning 的模型名只会误导。
+        if (
+            self.thinking_enabled
+            and self.backend in _REASONING_BACKENDS
+            and self.thinking_model
+            and self.thinking_model not in choices
+        ):
+            choices.append(self.thinking_model)
         return choices
+
+    # -- 深度思考 ---------------------------------------------------------
+
+    @property
+    def thinking_model_ids(self) -> list[str]:
+        raw = [m.strip() for m in (self.thinking_models or "").split(",") if m.strip()]
+        if self.thinking_model and self.thinking_model not in raw:
+            raw.insert(0, self.thinking_model)
+        return raw
+
+    def is_thinking_capable(self, model: str) -> bool:
+        return bool(model) and model in self.thinking_model_ids
 
     def is_llm_allowed(self, model: str) -> bool:
         """校验模型名白名单。
@@ -274,6 +367,34 @@ class ModelSettings(_BaseGroup):
 
     def model_label(self, model: str) -> str:
         return _MODEL_LABELS.get(model, "")
+
+    # -- 图像模型（AI 创作页）--------------------------------------------
+
+    @property
+    def available_image_models(self) -> list[dict[str, str]]:
+        """可选图像模型清单。
+
+        不支持图像生成的后端返回空清单 —— 界面据此显示「当前后端不支持」，
+        而不是给出一个点了必然失败的模型下拉。
+        """
+        if self.backend not in _IMAGE_CAPABLE_BACKENDS:
+            return []
+
+        raw = [m.strip() for m in (self.image_models or "").split(",") if m.strip()]
+        choices = raw or list(_BACKEND_IMAGE_CHOICES.get(self.backend, ()))
+        if self.image_model and self.image_model not in choices:
+            choices = [self.image_model, *choices]
+        elif self.image_model in choices:
+            choices = [self.image_model] + [m for m in choices if m != self.image_model]
+        return [
+            {"id": name, "label": _IMAGE_MODEL_LABELS.get(name, name)}
+            for name in choices
+        ]
+
+    def is_image_model_allowed(self, model: str) -> bool:
+        return bool(model) and any(
+            item["id"] == model for item in self.available_image_models
+        )
 
     @property
     def resolved_llm_choice(self) -> str:
@@ -331,6 +452,8 @@ class RateLimitSettings(_BaseGroup):
             "upload": (10, 60),
             "share_read": (30, 60),
             "long_text": (10, 60),
+            # 出图比文本贵得多（单张按张计费），配额默认收紧到 6 次/分钟
+            "creation": (6, 60),
         }
     )
 
@@ -460,6 +583,45 @@ class OcrSettings(_BaseGroup):
     @property
     def language_list(self) -> list[str]:
         return [x.strip() for x in self.languages.split("+") if x.strip()]
+
+
+# ---------------------------------------------------------------------------
+#  媒体生成分组（阿里云百炼 / DashScope）
+# ---------------------------------------------------------------------------
+
+
+class BailianSettings(_BaseGroup):
+    """阿里云百炼的图像 / 视频生成配置。
+
+    ⚠️ 密钥刻意**与 `MODEL_BACKEND` 的密钥分开**：百炼是独立的供应商，
+    借用 `ZHIPU_API_KEY` / `OPENAI_API_KEY` 会把「换聊天模型」变成
+    「顺便换掉出图账号」，而且报错信息会指向完全无关的地方。
+
+    ## 为什么这些接口都是「异步任务」
+
+    DashScope 的 `text2image` / `video-synthesis` 都只返回 `task_id`，
+    真正的产物要轮询 `/api/v1/tasks/{id}` 才拿得到（视频 1-3 分钟是常态）。
+    直接把 HTTP 请求挂到用户请求上会因为网关超时而「图出了但接口 504」，
+    所以上层用「提交 → 轮询 → 落盘」三步，图片同步等（几十秒可接受），
+    视频走任务行 + 前端轮询。
+    """
+
+    model_config = SettingsConfigDict(**_COMMON_CFG, env_prefix="BAILIAN_")
+
+    api_key: str = ""
+    base_url: str = "https://dashscope.aliyuncs.com"
+    #: 默认图像模型（已实测可用）
+    image_model: str = "wanx2.1-t2i-turbo"
+    #: 默认视频模型（已实测可用；尺寸必须是官方白名单之一）
+    video_model: str = "wan2.2-t2v-plus"
+    #: 任务轮询间隔。太密会被上游限流，太疏则前端看着像卡住
+    poll_interval_seconds: float = Field(3.0, ge=0.5, le=30)
+    image_timeout_seconds: float = Field(180.0, ge=20, le=600)
+    video_timeout_seconds: float = Field(900.0, ge=60, le=1800)
+
+    @property
+    def enabled(self) -> bool:
+        return bool((self.api_key or "").strip())
 
 
 # ---------------------------------------------------------------------------
@@ -640,6 +802,10 @@ class Settings(BaseSettings):
         return get_redis_settings()
 
     @property
+    def bailian(self) -> BailianSettings:
+        return get_bailian_settings()
+
+    @property
     def graph(self) -> GraphSettings:
         return get_graph_settings()
 
@@ -683,6 +849,7 @@ def get_settings() -> Settings:
         settings.graph,
         settings.ocr,
         settings.workflow,
+        settings.bailian,
     )
     return settings
 
@@ -737,6 +904,11 @@ def get_workflow_settings() -> WorkflowSettings:
     return WorkflowSettings()
 
 
+@lru_cache(maxsize=1)
+def get_bailian_settings() -> BailianSettings:
+    return BailianSettings()
+
+
 def clear_settings_cache() -> None:
     """测试用：清空配置缓存（配合 monkeypatch.setenv）。"""
     for fn in (
@@ -751,5 +923,6 @@ def clear_settings_cache() -> None:
         get_graph_settings,
         get_ocr_settings,
         get_workflow_settings,
+        get_bailian_settings,
     ):
         fn.cache_clear()

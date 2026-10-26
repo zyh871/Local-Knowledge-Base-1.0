@@ -61,6 +61,7 @@ def initial_state(
     force_search: bool,
     trace_id: str,
     model: Optional[str] = None,
+    thinking: bool = False,
 ) -> dict:
     return {
         "question": question,
@@ -69,6 +70,7 @@ def initial_state(
         "force_search": bool(force_search),
         "trace_id": trace_id,
         "model": model or "",
+        "thinking": bool(thinking),
     }
 
 
@@ -85,6 +87,10 @@ def final_answer(values: dict) -> dict:
         # 新增（前端可选消费）：本次实际使用的模型，以及回答是否可能被截断
         "model": values.get("used_model", "") or "",
         "truncated": bool(values.get("truncated", False)),
+        # 深度思考：推理原文与耗时。老前端忽略这两个字段，行为不变
+        "thinking": bool(values.get("thinking", False)),
+        "reasoning": values.get("reasoning", "") or "",
+        "reasoning_ms": int(values.get("reasoning_ms", 0) or 0),
     }
 
 
@@ -98,6 +104,7 @@ async def run_graph(
     force_search: bool = False,
     trace_id: str = "-",
     model: Optional[str] = None,
+    thinking: bool = False,
     redis: Any = None,
 ) -> dict:
     """非流式执行。异常向上抛，由 service 层翻译为旧错误响应体。"""
@@ -109,6 +116,7 @@ async def run_graph(
         force_search=force_search,
         trace_id=trace_id,
         model=model,
+        thinking=thinking,
     )
 
     values = await graph.ainvoke(state, config=config)
@@ -127,6 +135,7 @@ async def stream_graph(
     force_search: bool = False,
     trace_id: str = "-",
     model: Optional[str] = None,
+    thinking: bool = False,
     redis: Any = None,
 ) -> AsyncIterator[dict]:
     """流式执行，产出 SSE 事件字典（不含 trace_id，由 service 层统一附加）。"""
@@ -138,6 +147,7 @@ async def stream_graph(
         force_search=force_search,
         trace_id=trace_id,
         model=model,
+        thinking=thinking,
     )
 
     # 用「空闲超时」包住迭代：`graph.astream()` 只是异步迭代器，

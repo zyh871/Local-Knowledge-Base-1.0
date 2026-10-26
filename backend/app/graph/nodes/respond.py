@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import re
+import time
 from typing import Any
 
 from app.agents.intent_classifier import (
@@ -42,6 +43,24 @@ def emit(event: dict[str, Any]) -> None:
             writer(event)
     except Exception:  # noqa: BLE001  任何异常都不应影响图执行
         pass
+
+
+def _reasoning_of(chunk: Any) -> str:
+    """从流式分片里取推理文本。
+
+    两种来源都要认：
+      * `ThinkingChunk.reasoning`（我们自己的推理客户端）
+      * `additional_kwargs["reasoning_content"]`（某些 provider 的封装会放这里）
+    """
+    value = getattr(chunk, "reasoning", "")
+    if isinstance(value, str) and value:
+        return value
+    extra = getattr(chunk, "additional_kwargs", None) or {}
+    if isinstance(extra, dict):
+        fallback = extra.get("reasoning_content")
+        if isinstance(fallback, str):
+            return fallback
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -226,16 +245,40 @@ def generate(state: RAGState, deps: Deps) -> dict:
       3. **失败回退返回空内容时不再静默保留半截答案** —— 显式标记 `truncated`，
          避免"看起来正常、其实少了一半"这种最难排查的状态
     """
-    from app.rag.providers import get_llm, resolve_model
+    from app.rag.providers import get_llm, get_thinking_llm, resolve_model
     from app.utils.text import finish_reason_of, usage_of
 
     prompt = state.get("prompt") or ""
     requested = (state.get("model") or "").strip() or None
 
+    # ── 深度思考：选模型 ────────────────────────────────────────────
+    #
+    # 只有「支持 reasoning_content 的模型 + 后端开关打开」才真的走推理链路。
+    # 用户当前选的模型若不支持，**明确切到配置的思考模型**并记日志 ——
+    # 界面顶部会显示实际模型，这比"开关打开了但什么都不发生"可解释得多。
+    model_settings = deps.settings.model
+    thinking_on = bool(state.get("thinking")) and bool(
+        getattr(model_settings, "thinking_enabled", False)
+    )
+    thinking_model = ""
+    if thinking_on:
+        target = requested or model_settings.llm_model
+        if not model_settings.is_thinking_capable(target):
+            thinking_model = model_settings.thinking_model
+            logger.info(
+                f"深度思考：{target} 无推理输出，改用 {thinking_model}"
+            )
+        else:
+            thinking_model = target
+
     # 按请求选择模型（白名单已在 API 层校验；此处再兜一层）
     try:
-        used_model = resolve_model(requested)
-        llm = get_llm(requested)
+        used_model = resolve_model(thinking_model or requested)
+        llm = (
+            get_thinking_llm(thinking_model)
+            if thinking_on and thinking_model
+            else get_llm(requested)
+        )
     except ValueError as exc:
         logger.error(f"模型选择失败: {exc}")
         return {
@@ -258,12 +301,24 @@ def generate(state: RAGState, deps: Deps) -> dict:
     finish_reason: str | None = None
     stream_error: Exception | None = None
     token_usage: dict = {}
+    reasoning_parts: list[str] = []
+    reasoning_started: float | None = None
+    reasoning_ms = 0
 
     try:
         for chunk in llm.stream(prompt):
             fr = finish_reason_of(chunk)
             if fr:
                 finish_reason = fr
+            if thinking_on:
+                piece = _reasoning_of(chunk)
+                if piece:
+                    # 从**第一段推理**开始计时，而不是从请求开始：
+                    # 用户关心的是「模型想了多久」，不是「网络排队多久」
+                    if reasoning_started is None:
+                        reasoning_started = time.perf_counter()
+                    reasoning_parts.append(piece)
+                    emit({"type": "reasoning", "content": piece})
             text = extract_text(chunk)
             if not text:
                 continue
@@ -280,6 +335,11 @@ def generate(state: RAGState, deps: Deps) -> dict:
             text = extract_text(answer)
             token_usage = usage_of(answer)
             finish_reason = finish_reason_of(answer) or finish_reason
+            if thinking_on:
+                # 同步回退也要保留推理文本，否则界面会从「有思考」突然变成「没思考」
+                piece = _reasoning_of(answer)
+                if piece:
+                    reasoning_parts.append(piece)
             if text:
                 if len(full) > len(text) // 2:
                     # 流已产出大半 → 保留流式结果，避免同一段话出现两遍
@@ -320,7 +380,20 @@ def generate(state: RAGState, deps: Deps) -> dict:
             + ("（已用同步回退）" if fallback_used else "")
         )
 
-    return {"answer": full, "used_model": used_model, "truncated": truncated}
+    return {
+        "answer": full,
+        "used_model": used_model,
+        "truncated": truncated,
+        # 推理过程只随本次响应返回，**不写入对话记忆**：
+        # 它是模型的草稿，带进下一轮反而会干扰回答
+        "reasoning": "".join(reasoning_parts),
+        "reasoning_ms": (
+            int((time.perf_counter() - reasoning_started) * 1000)
+            if reasoning_started is not None
+            else 0
+        ),
+        "thinking": thinking_on,
+    }
 
 
 

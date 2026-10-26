@@ -30,4 +30,10 @@ async def list_models(
         models=[ModelInfo(**item) for item in list_llm_models()],
         default_model=model_cfg.resolved_llm_choice,
         backend=model_cfg.backend,
+        thinking_enabled=bool(getattr(model_cfg, "thinking_enabled", False)),
+        thinking_model=getattr(model_cfg, "thinking_model", "") or "",
+        thinking_models=[
+            m for m in model_cfg.available_llm_models
+            if model_cfg.is_thinking_capable(m)
+        ],
     )

@@ -14,18 +14,7 @@
     <!-- Sidebar：工作模式下是「任务列表」 -->
     <template #sidebar>
       <aside class="sidebar hidden lg:flex w-[260px] shrink-0 flex-col min-h-0">
-        <div class="sidebar-header p-5">
-          <h1 class="sidebar-title mb-4 font-semibold">AI 工作流</h1>
-          <button
-            class="new-chat-btn flex items-center justify-center gap-2 w-full py-2 text-sm whitespace-nowrap"
-            @click="newTask"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 5v14M5 12h14"/>
-            </svg>
-            新建任务
-          </button>
-        </div>
+        <SidebarNav mode="work" @new="newTask" />
 
         <div class="chat-list flex-1 min-h-0 overflow-y-auto px-3">
           <div v-if="loadingRuns" class="task-hint px-3 py-4 text-xs">加载中…</div>
@@ -59,42 +48,14 @@
           </div>
         </div>
 
-        <div class="sidebar-footer px-3 py-4">
-          <nav class="flex flex-col gap-1">
-            <button class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap" @click="router.push('/models')">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-              模型设置
-            </button>
-            <button class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap" @click="toggleTheme">
-              <svg v-if="theme === 'light'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-              </svg>
-              <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
-                <circle cx="12" cy="12" r="5"/>
-                <line x1="12" y1="1" x2="12" y2="3"/>
-                <line x1="12" y1="21" x2="12" y2="23"/>
-                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-                <line x1="1" y1="12" x2="3" y2="12"/>
-                <line x1="21" y1="12" x2="23" y2="12"/>
-                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-              </svg>
-              {{ theme === 'light' ? '深色模式' : '浅色模式' }}
-            </button>
-            <button class="sidebar-nav-btn logout flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap" @click="logout">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                <polyline points="16 17 21 12 16 7"/>
-                <line x1="21" y1="12" x2="9" y2="12"/>
-              </svg>
-              退出登录
-            </button>
-          </nav>
-        </div>
+        <UserMenu
+          :name="userName"
+          :theme="theme"
+          :items="['models', 'theme']"
+          @models="router.push('/models')"
+          @theme="toggleTheme"
+          @logout="logout"
+        />
       </aside>
     </template>
 
@@ -634,6 +595,9 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppLayout from '../layouts/AppLayout.vue'
+import BrandTitle from '../components/BrandTitle.vue'
+import SidebarNav from '../components/sidebar/SidebarNav.vue'
+import UserMenu from '../components/sidebar/UserMenu.vue'
 import PlanEditor from '../components/workflow/PlanEditor.vue'
 import StepTimeline from '../components/workflow/StepTimeline.vue'
 import ClarifyCard from '../components/workflow/ClarifyCard.vue'
@@ -650,6 +614,7 @@ import {
 
 const router = useRouter()
 const { theme, toggleTheme } = useTheme()
+const userName = ref(localStorage.getItem('username') || '')
 
 const MODE_LABELS = { manual: '人工审查', auto: 'AI 自动执行' }
 

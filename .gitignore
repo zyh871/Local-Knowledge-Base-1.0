@@ -51,4 +51,7 @@ deliverables/
 
 # 测试/验证临时目录
 _pytmp*/
+_pyc*/
+_pyf*/
+_pyt*/
 .verify-shots*/

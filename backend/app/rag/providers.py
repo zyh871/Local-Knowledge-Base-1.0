@@ -30,7 +30,9 @@ __all__ = [
     "get_embeddings",
     "get_llm",
     "get_query_llm",
+    "get_thinking_llm",
     "get_vision_llm",
+    "is_thinking_capable",
     "list_llm_models",
     "reset_model_singletons",
     "resolve_model",
@@ -86,11 +88,12 @@ _vision_llm_lock = threading.Lock()
 def reset_model_singletons() -> None:
     """测试用：清空模型单例。"""
     global _embeddings_instance, _query_llm_instance, _vision_llm_instance
-    with _embeddings_lock, _query_llm_lock, _vision_llm_lock, _llm_lock:
+    with _embeddings_lock, _query_llm_lock, _vision_llm_lock, _llm_lock, _thinking_lock:
         _embeddings_instance = None
         _query_llm_instance = None
         _vision_llm_instance = None
         _llm_instances.clear()
+        _thinking_instances.clear()
 
 
 def _openai_compatible(model: str, api_key: str, base_url: str, **kwargs: Any):
@@ -493,3 +496,81 @@ def _build_vision_llm() -> Any:
 
     logger.warning(f"后端 {backend} 未配置视觉模型，回落为文本 LLM")
     return get_llm()
+
+
+# ---------------------------------------------------------------------------
+#  深度思考（推理流）
+# ---------------------------------------------------------------------------
+#
+# `ChatOpenAI` 会丢弃第三方 provider 的 `reasoning_content`（其源码注释里
+# 写得很直白：非 OpenAI 规范的字段不提取）。所以推理这一条路改用
+# `app/rag/thinking.py` 的轻量客户端 —— 只用 openai SDK 的流式接口，
+# 把 reasoning / content 两条通道分开。其余路径不变。
+
+_thinking_instances: dict[str, Any] = {}
+_thinking_lock = threading.Lock()
+
+
+def is_thinking_capable(model: str) -> bool:
+    """该模型是否会把推理过程流出来。
+
+    判据只有 `ModelSettings.is_thinking_capable` 一处 —— 免得前端、节点、
+    接口各有一套「哪些模型能思考」的名单，最后互相矛盾。
+    """
+    return get_settings().model.is_thinking_capable(model)
+
+
+def get_thinking_llm(model: Optional[str] = None) -> Any:
+    """获取带推理通道的 LLM。
+
+    不支持的模型后端（local / mock / ollama）直接回落普通 LLM：
+    此时 `thinking=true` 会被忽略，界面上不会出现「已思考」面板 ——
+    这比编一段假的推理过程诚实得多。
+    """
+    settings = get_settings()
+    model = model or settings.model.thinking_model
+
+    cached = _thinking_instances.get(model)
+    if cached is not None:
+        return cached
+
+    with _thinking_lock:
+        if model not in _thinking_instances:
+            _thinking_instances[model] = _build_thinking_llm(model)
+        return _thinking_instances[model]
+
+
+def _build_thinking_llm(model_name: str) -> Any:
+    from app.rag.thinking import ThinkingChat
+
+    settings = get_settings()
+    model = settings.model
+    timeout = float(getattr(model, "llm_timeout_seconds", 0) or 600)
+
+    if model.backend == "zhipu":
+        return ThinkingChat(
+            model=model_name,
+            api_key=model.zhipu_api_key,
+            base_url=model.zhipu_base_url,
+            timeout=timeout,
+            max_tokens=model.max_tokens,
+        )
+    if model.backend == "openai":
+        return ThinkingChat(
+            model=model_name,
+            api_key=model.openai_api_key,
+            base_url=model.openai_base_url or "https://api.openai.com/v1",
+            timeout=timeout,
+            max_tokens=model.max_tokens,
+        )
+    if model.backend == "modelscope":
+        return ThinkingChat(
+            model=model_name,
+            api_key=model.modelscope_api_key,
+            base_url=model.modelscope_base_url,
+            timeout=timeout,
+            max_tokens=model.max_tokens,
+        )
+
+    logger.info(f"后端 {model.backend} 无推理通道，thinking 请求回落普通 LLM")
+    return get_llm(model_name)

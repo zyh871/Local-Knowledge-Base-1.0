@@ -39,6 +39,53 @@ class TestGroupEnvBinding:
         assert settings.redis.ttl_session == 1234
         assert settings.redis.fallback_to_memory is False
 
+    def test_bailian_group_uses_bailian_prefix(self, monkeypatch, fresh_settings):
+        """百炼（DashScope）密钥与模型必须绑定到 BAILIAN_ 前缀。
+
+        它是独立供应商，不能借用 ZHIPU_API_KEY：一旦借用，
+        「换聊天模型」会顺带换掉出图账号，而报错信息还指向无关的地方。
+        """
+        monkeypatch.setenv("BAILIAN_API_KEY", "sk-test")
+        monkeypatch.setenv("BAILIAN_IMAGE_MODEL", "wanx-test-image")
+        monkeypatch.setenv("BAILIAN_VIDEO_MODEL", "wanx-test-video")
+        monkeypatch.setenv("BAILIAN_VIDEO_TIMEOUT_SECONDS", "600")
+        settings = get_settings()
+        assert settings.bailian.api_key == "sk-test"
+        assert settings.bailian.image_model == "wanx-test-image"
+        assert settings.bailian.video_model == "wanx-test-video"
+        assert settings.bailian.video_timeout_seconds == 600
+        assert settings.bailian.enabled is True
+
+    def test_thinking_settings_bind(self, monkeypatch, fresh_settings):
+        monkeypatch.setenv("THINKING_MODEL", "glm-test")
+        monkeypatch.setenv("THINKING_MODELS", "glm-test,other")
+        monkeypatch.setenv("ZHIPU_API_KEY", "k")
+        monkeypatch.setenv("MODEL_BACKEND", "zhipu")
+        settings = get_settings()
+        assert settings.model.thinking_model == "glm-test"
+        assert settings.model.is_thinking_capable("other") is True
+        # 思考模型必须自动出现在可选清单里，否则请求无法切过去
+        assert "glm-test" in settings.model.available_llm_models
+
+    def test_mock_backend_does_not_advertise_thinking_models(self, fresh_settings):
+        """mock / local 没有推理通道，不该往模型清单里塞一个永远没有思考过程的模型。"""
+        from app.core.config import ModelSettings
+
+        settings = ModelSettings(_env_file=None, backend="mock", llm_choices="mock")
+        assert settings.available_llm_models == ["mock"]
+
+    def test_creation_provider_switch(self, monkeypatch, fresh_settings):
+        """创作供应商是可切换的开关，不是写死的常量。
+
+        切到 ModelScope 后百炼的模型不应再出现；视频能力则由
+        MODELSCOPE_VIDEO_ENABLED 单独控制（平台未开放时保持关闭）。
+        """
+        monkeypatch.setenv("CREATION_PROVIDERS", "modelscope,bailian")
+        monkeypatch.setenv("MODELSCOPE_VIDEO_ENABLED", "true")
+        model = get_settings().model
+        assert model.creation_providers == "modelscope,bailian"
+        assert model.modelscope_video_enabled is True
+
     def test_generation_timeout_and_retries(self, monkeypatch, fresh_settings):
         """生成请求的超时与重试必须可配置。
 

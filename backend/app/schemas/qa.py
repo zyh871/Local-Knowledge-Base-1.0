@@ -20,6 +20,10 @@ class QuestionRequest(BaseModel):
     # 按请求覆盖模型（前端「模型切换」控件）。
     # 留空 → 用服务端配置的默认模型。取值必须命中白名单，否则 400。
     model: Optional[str] = None
+    # 深度思考：把模型的推理过程通过 SSE `reasoning` 事件实时推给前端。
+    # 只有支持 reasoning_content 的模型才会真的有输出；不支持的模型
+    # 不会退化成「编一段假思考」，只是没有 reasoning 事件。
+    thinking: bool = False
 
     def validate_question(self) -> str:
         """校验并返回清理后的问题。
@@ -73,6 +77,11 @@ class ModelListResponse(BaseModel):
     default_model: str = ""
     # 当前后端（zhipu / openai / ...），便于前端按后端展示不同提示
     backend: str = ""
+    # 深度思考能力（前端据此在开关打开时把模型切到真正支持推理的那个，
+    # 否则会出现「开关是开的、模型标记是 flash、实际却在用 4.5」的错位）
+    thinking_enabled: bool = False
+    thinking_model: str = ""
+    thinking_models: list[str] = Field(default_factory=list)
 
 
 

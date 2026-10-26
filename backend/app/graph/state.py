@@ -51,6 +51,8 @@ class RAGState(TypedDict, total=False):
     trace_id: str
     # 按请求覆盖模型（前端模型切换控件）；空串 = 用服务端默认模型
     model: str
+    # 是否展示模型的推理过程（深度思考）。仅对支持 reasoning_content 的模型有效
+    thinking: bool
 
     # ── 上下文装载（ingest 节点）───────────────────────────────
     history: list[dict[str, str]]
@@ -81,6 +83,10 @@ class RAGState(TypedDict, total=False):
     # 实际使用的模型名（回显给前端）与是否被截断
     used_model: str
     truncated: bool
+    # 推理过程（深度思考）。reasoning 只在本次请求内有效，不写入对话记忆 ——
+    # 它属于「模型的草稿」，多轮对话里带上反而会干扰后续回答。
+    reasoning: str
+    reasoning_ms: int
 
     # ── Agent 子图产物 ────────────────────────────────────────
     messages: Annotated[list[Any], operator.add]

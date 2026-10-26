@@ -14,6 +14,7 @@ from app.api.v1 import (
     agent,
     auth,
     conversations,
+    creation,
     documents,
     feedback,
     model_endpoints,
@@ -50,5 +51,7 @@ api_router.include_router(
     model_endpoints.router, tags=["模型端点"], dependencies=_global_limit
 )
 api_router.include_router(system.router, tags=["系统"], dependencies=_global_limit)
+# AI 创作（文生图）：独立命名空间 `/creations/*`
+api_router.include_router(creation.router, tags=["创作"], dependencies=_global_limit)
 # AI 工作流：独立命名空间 `/workflow/*`，既有端点一行未改
 api_router.include_router(workflow.router, tags=["工作流"], dependencies=_global_limit)

@@ -66,6 +66,7 @@ async def ask_question(
         force_search=req.force_search,
         trace_id=trace_id,
         model=model,
+        thinking=req.thinking,
     )
     if outcome.ok:
         return outcome.payload
@@ -123,6 +124,7 @@ async def ask_question_stream(
             force_search=req.force_search,
             trace_id=trace_id,
             model=model,
+            thinking=req.thinking,
         ),
         media_type="text/event-stream",
         headers=SSE_HEADERS,

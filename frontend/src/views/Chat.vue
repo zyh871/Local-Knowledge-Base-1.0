@@ -3,15 +3,8 @@
     <!-- Sidebar -->
     <template #sidebar>
     <aside class="sidebar hidden lg:flex w-[260px] shrink-0 flex-col min-h-0">
-      <div class="sidebar-header p-5">
-        <h1 class="sidebar-title mb-4 font-semibold">知识库问答</h1>
-        <button @click="newChat" class="new-chat-btn flex items-center justify-center gap-2 w-full py-2 text-sm whitespace-nowrap">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 5v14M5 12h14"/>
-          </svg>
-          新对话
-        </button>
-      </div>
+      <!-- 品牌 + 对话/工作 + 新对话 + 智鲸创作（模式切换已从顶栏移到侧栏） -->
+      <SidebarNav mode="chat" @new="newChat" />
 
       <div class="chat-list flex-1 min-h-0 overflow-y-auto px-3">
         <!-- Search -->
@@ -199,82 +192,23 @@
         </teleport>
       </div>
 
-      <div class="sidebar-footer px-3 py-4">
-        <nav class="flex flex-col gap-1">
-          <button @click="toggleDocumentPanel" class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-            </svg>
-            文档管理
-          </button>
-          <button @click="showProfilePanel = true" class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-              <circle cx="12" cy="7" r="4"/>
-            </svg>
-            用户画像
-          </button>
-          <button @click="showLongTextPanel = true" class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-            </svg>
-            长文本工具
-          </button>
-          <button @click="router.push('/models')" class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
-              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-              <circle cx="12" cy="12" r="3"/>
-            </svg>
-            模型设置
-          </button>
-          <button @click="toggleTheme" class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
-            <svg v-if="theme === 'light'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-            </svg>
-            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
-              <circle cx="12" cy="12" r="5"/>
-              <line x1="12" y1="1" x2="12" y2="3"/>
-              <line x1="12" y1="21" x2="12" y2="23"/>
-              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-              <line x1="1" y1="12" x2="3" y2="12"/>
-              <line x1="21" y1="12" x2="23" y2="12"/>
-              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-            </svg>
-            {{ theme === 'light' ? '深色模式' : '浅色模式' }}
-          </button>
-          <button @click="logout" class="sidebar-nav-btn logout flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-              <polyline points="16 17 21 12 16 7"/>
-              <line x1="21" y1="12" x2="9" y2="12"/>
-            </svg>
-            退出登录
-          </button>
-        </nav>
-      </div>
+      <UserMenu
+        :name="userName"
+        :theme="theme"
+        @documents="toggleDocumentPanel"
+        @profile="showProfilePanel = true"
+        @long-text="showLongTextPanel = true"
+        @models="router.push('/models')"
+        @theme="toggleTheme"
+        @logout="logout"
+      />
     </aside>
 
     <!-- Mobile sidebar drawer -->
     <div v-if="sidebarOpen" class="mobile-sidebar-overlay lg:hidden" @click="sidebarOpen = false"></div>
     <div v-if="sidebarOpen" class="mobile-sidebar-drawer lg:hidden">
-      <div class="sidebar-header p-5 flex items-center justify-between">
-        <h1 class="sidebar-title mb-0 font-semibold">知识库问答</h1>
-        <button @click="sidebarOpen = false" class="p-1.5 header-menu-btn" aria-label="关闭侧边栏">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 6L6 18M6 6l12 12"/>
-          </svg>
-        </button>
-      </div>
-      <div class="sidebar-content flex-1 min-h-0 overflow-y-auto" @click.stop>
-        <button @click="newChat; sidebarOpen = false" class="new-chat-btn flex items-center justify-center gap-2 w-full mx-5 mb-4 py-2 text-sm whitespace-nowrap">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 5v14M5 12h14"/>
-          </svg>
-          新对话
-        </button>
+      <div class="sidebar-content flex flex-col flex-1 min-h-0 overflow-y-auto" @click.stop>
+        <SidebarNav mode="chat" closable @new="newChat(); sidebarOpen = false" @close="sidebarOpen = false" />
 
         <div class="chat-list flex-1 min-h-0 overflow-y-auto px-3">
           <div class="mb-3">
@@ -321,56 +255,16 @@
           </div>
         </div>
       </div>
-      <div class="sidebar-footer px-3 py-4">
-        <nav class="flex flex-col gap-1">
-          <button @click="toggleDocumentPanel; sidebarOpen = false" class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-            </svg>
-            文档管理
-          </button>
-          <button @click="showProfilePanel = true; sidebarOpen = false" class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-              <circle cx="12" cy="7" r="4"/>
-            </svg>
-            用户画像
-          </button>
-          <button @click="showLongTextPanel = true; sidebarOpen = false" class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-            </svg>
-            长文本工具
-          </button>
-          <button @click="router.push('/models')" class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
-              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-              <circle cx="12" cy="12" r="3"/>
-            </svg>
-            模型设置
-          </button>
-          <button @click="toggleTheme" class="sidebar-nav-btn flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
-            <svg v-if="theme === 'light'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-            </svg>
-            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
-              <circle cx="12" cy="12" r="5"/>
-              <line x1="12" y1="1" x2="12" y2="3"/>
-              <line x1="12" y1="21" x2="12" y2="23"/>
-            </svg>
-            {{ theme === 'light' ? '深色模式' : '浅色模式' }}
-          </button>
-          <button @click="logout" class="sidebar-nav-btn logout flex items-center gap-2.5 w-full px-3 py-2 text-sm whitespace-nowrap">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-icon">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-              <polyline points="16 17 21 12 16 7"/>
-              <line x1="21" y1="12" x2="9" y2="12"/>
-            </svg>
-            退出登录
-          </button>
-        </nav>
-      </div>
+      <UserMenu
+        :name="userName"
+        :theme="theme"
+        @documents="toggleDocumentPanel"
+        @profile="showProfilePanel = true"
+        @long-text="showLongTextPanel = true"
+        @models="router.push('/models')"
+        @theme="toggleTheme"
+        @logout="logout"
+      />
     </div>
 
     </template>
@@ -504,19 +398,37 @@
               </svg>
             </div>
             <div class="bubble assistant-bubble max-w-[65%] px-4 py-3">
-              <!-- thinking state -->
-              <div v-if="msg.status === 'thinking'" class="thinking-indicator">
+              <!-- 深度思考：推理过程（DeepSeek 式折叠面板）。
+                   流式期间强制展开，结束后自动收起为一行「已思考（用时 N 秒）」。 -->
+              <div v-if="msg.reasoning" class="reasoning-panel" :class="{ live: msg.status !== 'done' }">
+                <button type="button" class="reasoning-head" @click="toggleReasoning(idx)">
+                  <span class="reasoning-orb" aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                      <circle cx="12" cy="12" r="3"/>
+                      <path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>
+                    </svg>
+                  </span>
+                  <span class="reasoning-title">{{ reasoningTitle(msg) }}</span>
+                  <svg class="reasoning-chevron" :class="{ open: reasoningOpen[idx] }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </button>
+                <div v-show="reasoningOpen[idx] || msg.status !== 'done'" class="reasoning-body">{{ msg.reasoning }}</div>
+              </div>
+
+              <!-- thinking state（还没有推理文本时） -->
+              <div v-if="msg.status === 'thinking' && !msg.reasoning" class="thinking-indicator">
                 <div class="typing-dots">
                   <span></span>
                   <span></span>
                   <span></span>
                 </div>
-                <span class="typing-text">思考中...</span>
+                <span class="typing-text">{{ thinkingEnabled ? '思考中...' : '正在生成...' }}</span>
               </div>
 
               <!-- streaming / done state -->
-              <template v-else>
-                <div class="markdown-body text-sm message-text" v-html="renderMarkdown(msg.content)"></div>
+              <template v-if="msg.status !== 'thinking' || !!msg.reasoning">
+                <div v-if="msg.content" class="markdown-body text-sm message-text" v-html="renderMarkdown(msg.content)"></div>
 
                 <!-- Source section: only shown when done and sources exist -->
                 <div v-if="msg.status === 'done' && msg.sources && msg.sources.length > 0" class="source-section mt-3 pt-3">
@@ -561,6 +473,9 @@
                   </span>
                   <span v-if="msg.intent" class="inline-flex items-center px-2 py-0.5 text-xs whitespace-nowrap intent-badge" :class="`intent-${msg.intent}`">
                     {{ getIntentLabel(msg.intent) }}
+                  </span>
+                  <span v-if="msg.usedModel" class="inline-flex items-center px-2 py-0.5 text-xs whitespace-nowrap model-badge">
+                    {{ msg.usedModel }}
                   </span>
                   <span class="text-xs message-time">{{ formatTime() }}</span>
                   <div class="flex items-center gap-1 ml-auto">
@@ -723,6 +638,13 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="11" cy="11" r="8"/>
                 <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </button>
+            <!-- 深度思考：开启后请求会带上 thinking=true，推理过程实时显示在气泡顶部 -->
+            <button :class="['toolbar-btn flex items-center justify-center p-2', { active: thinkingEnabled }]" @click="toggleThinking" :title="thinkingEnabled ? '已开启深度思考：展示模型推理过程（回答会更慢）' : '开启深度思考（展示推理过程）'" aria-label="深度思考">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 3a5 5 0 0 0-5 5c0 1.6.7 2.8 1.6 3.7.6.6.9 1.2.9 2V15h5v-1.3c0-.8.3-1.4.9-2A5 5 0 0 0 12 3z"/>
+                <path d="M9.5 18h5M10 21h4"/>
               </svg>
             </button>
           </div>
@@ -976,6 +898,8 @@ import { useRouter } from 'vue-router'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import AppLayout from '../layouts/AppLayout.vue'
+import SidebarNav from '../components/sidebar/SidebarNav.vue'
+import UserMenu from '../components/sidebar/UserMenu.vue'
 import { useTheme } from '../composables/useTheme'
 
 // 主题由 useTheme 单例统一管理（AppLayout / WorkView / Chat 共享同一份状态）
@@ -986,6 +910,8 @@ marked.setOptions({ breaks: true, gfm: true })
 const router = useRouter()
 const API_BASE = '/api'
 const token = ref(localStorage.getItem('token') || '')
+// 侧栏底部只显示头像 + 名字；登录时写入，刷新后仍在
+const userName = ref(localStorage.getItem('username') || '')
 const question = ref('')
 
 // ---- 模型切换（输入框上方的选择控件）----
@@ -1039,11 +965,29 @@ async function fetchModels() {
     availableModels.value = data.models || []
     defaultModel.value = data.default_model || ''
     modelBackend.value = data.backend || ''
+    thinkingInfo.value = {
+      enabled: !!data.thinking_enabled,
+      model: data.thinking_model || '',
+      models: data.thinking_models || []
+    }
+    // 服务端把总开关关了 → 前端也跟着关，避免"开关亮着但永远没有思考过程"
+    if (!thinkingInfo.value.enabled && thinkingEnabled.value) {
+      thinkingEnabled.value = false
+    }
 
     const ids = availableModels.value.map(m => m.id)
     // 已存的选择若已不在白名单（比如换了后端），回落到服务端默认
     if (!selectedModel.value || !ids.includes(selectedModel.value)) {
       selectedModel.value = defaultModel.value || ids[0] || ''
+      persistModel()
+    }
+    // 深度思考开着、但当前模型不会输出推理 → 自动切到支持的那个
+    if (
+      thinkingEnabled.value &&
+      thinkingInfo.value.models.length &&
+      !thinkingInfo.value.models.includes(selectedModel.value)
+    ) {
+      selectedModel.value = thinkingInfo.value.model || thinkingInfo.value.models[0]
       persistModel()
     }
   } catch (e) {
@@ -1061,6 +1005,48 @@ const documents = ref([])
 const stats = ref(null)
 const conversationId = ref('')
 const forceSearch = ref(false)
+
+/**
+ * 深度思考开关（默认开）。
+ *
+ * 默认开的理由：这是「能看见模型怎么想」的功能，关掉它就退化成普通问答；
+ * 但它确实更慢（GLM-4.5 单次推理 20-40 秒），所以给一个显眼的开关，
+ * 并记住用户的选择。
+ */
+const thinkingEnabled = ref(localStorage.getItem('thinkingEnabled') !== '0')
+/** 服务端下发的思考能力（哪些模型真的会输出推理、默认用哪个） */
+const thinkingInfo = ref({ enabled: false, model: '', models: [] })
+/** 每条消息的推理面板是否展开（流式期间强制展开，结束后默认收起） */
+const reasoningOpen = reactive({})
+
+function toggleThinking() {
+  thinkingEnabled.value = !thinkingEnabled.value
+  try {
+    localStorage.setItem('thinkingEnabled', thinkingEnabled.value ? '1' : '0')
+  } catch (e) {
+    /* 隐私模式忽略 */
+  }
+  // 打开时把模型切到真正支持推理的那个：否则界面显示 flash、实际却在用 4.5，
+  // 用户会以为「模型没变但速度慢了一倍」
+  if (thinkingEnabled.value) {
+    const capable = thinkingInfo.value.models || []
+    if (capable.length && !capable.includes(selectedModel.value)) {
+      const target = thinkingInfo.value.model || capable[0]
+      selectedModel.value = target
+      persistModel()
+    }
+  }
+}
+
+function toggleReasoning(idx) {
+  reasoningOpen[idx] = !reasoningOpen[idx]
+}
+
+function reasoningTitle(msg) {
+  if (msg.status !== 'done') return '正在思考…'
+  const seconds = Math.max(1, Math.round((msg.reasoningMs || 0) / 1000))
+  return `已思考（用时 ${seconds} 秒）`
+}
 const pendingImage = ref(null)
 const expandedSources = ref({})
 const copiedIdx = ref(-1)
@@ -1962,7 +1948,11 @@ async function sendQuestion() {
     status: 'thinking',
     content: '',
     sources: [],
-    data_source: ''
+    data_source: '',
+    // 深度思考：流式累积的推理原文 + 后端回报的耗时
+    reasoning: '',
+    reasoningMs: 0,
+    usedModel: ''
   })
   chatMessages.value[conversationId.value] = [...messages.value]
 
@@ -1982,7 +1972,9 @@ async function sendQuestion() {
         conversation_id: conversationId.value,
         force_search: forceSearch.value,
         // 模型切换：留空则后端用默认模型
-        model: selectedModel.value || undefined
+        model: selectedModel.value || undefined,
+        // 深度思考：让后端把 reasoning_content 以 reasoning 事件推回来
+        thinking: thinkingEnabled.value
       }),
       signal: abortController.signal
     })
@@ -2013,7 +2005,18 @@ async function sendQuestion() {
         if (line.startsWith('data: ')) {
           try {
             const data = JSON.parse(line.slice(6))
-            if (data.type === 'chunk') {
+            if (data.type === 'reasoning') {
+              // 推理分片与 chunk 一样**不能 trim**：换行和空格是思考步骤的分隔符，
+              // 裁掉之后整段会糊成一坨
+              const piece = data.content || ''
+              if (piece) {
+                messages.value[assistantIdx].reasoning =
+                  (messages.value[assistantIdx].reasoning || '') + piece
+                chatMessages.value[conversationId.value] = [...messages.value]
+                await nextTick()
+                scrollToBottom()
+              }
+            } else if (data.type === 'chunk') {
               // trim:false —— 分片必须保留首尾空白，否则词间空格会被吃掉
               const cleanChunk = cleanLLMChunk(data.content, { trim: false })
               if (cleanChunk) {
@@ -2036,6 +2039,13 @@ async function sendQuestion() {
               messages.value[assistantIdx].intent = data.content.intent || ''
               messages.value[assistantIdx].detected_language = data.content.detected_language || ''
               messages.value[assistantIdx].needs_clarification = !!data.content.needs_clarification
+              // 推理耗时用后端回报的值（前端自己计时会包含网络排队，偏大）；
+              // 万一 reasoning 事件在中途丢了，这里用最终的完整文本兜底
+              messages.value[assistantIdx].reasoningMs = data.content.reasoning_ms || 0
+              if (!messages.value[assistantIdx].reasoning && data.content.reasoning) {
+                messages.value[assistantIdx].reasoning = data.content.reasoning
+              }
+              messages.value[assistantIdx].usedModel = data.content.model || ''
               messages.value[assistantIdx].status = 'done'
               chatMessages.value[conversationId.value] = [...messages.value]
             } else if (data.type === 'intent') {
@@ -3012,6 +3022,74 @@ onUnmounted(() => {
   padding: 4px 0;
 }
 
+/* 深度思考面板（DeepSeek 式：一行折叠头 + 可展开的推理正文） */
+.reasoning-panel {
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--color-border-light);
+}
+
+.reasoning-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  transition: color 0.15s;
+}
+
+.reasoning-head:hover {
+  color: var(--color-text-secondary);
+}
+
+.reasoning-orb {
+  display: inline-flex;
+  color: var(--color-primary);
+}
+
+.reasoning-panel.live .reasoning-orb {
+  animation: reasoning-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes reasoning-pulse {
+  0%, 100% { opacity: 0.45; transform: scale(0.92); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+
+.reasoning-title {
+  font-weight: 500;
+}
+
+.reasoning-chevron {
+  transition: transform 0.18s;
+}
+
+.reasoning-chevron.open {
+  transform: rotate(180deg);
+}
+
+.reasoning-body {
+  margin-top: 6px;
+  padding-left: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+  font-size: var(--text-xs);
+  line-height: 1.8;
+  color: var(--color-text-tertiary);
+  /* 推理是纯文本（可能含换行与缩进），不能当 markdown 渲染：
+     模型经常输出半截 markdown，渲染出来会闪成一堆代码块 */
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.model-badge {
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-secondary);
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+}
+
 .typing-dots {
   display: flex;
   gap: 4px;
@@ -3880,16 +3958,44 @@ onUnmounted(() => {
   color: var(--color-warning);
 }
 
-/* ===== Markdown body rendering ===== */
+/* ===== Markdown body rendering =====
+ *
+ * 间距只用这一套尺度（正文 15px → 1em≈15px）：
+ *   段落 0.6em · 列表容器 0.35em/0.55em · 列表项 0.2em
+ *   标题 上 0.9em / 下 0.35em · 代码块·表格·引用 0.55em · 分隔线 0.8em
+ * 首元素去掉上边距、尾元素去掉下边距，避免气泡上下各多出半个空行。
+ */
 .markdown-body {
   line-height: 1.5;
   word-break: break-word;
+  /* ★ 必须显式设回 normal。
+     `.message-text` 为了让**用户输入**里的换行保留下来设了 `pre-wrap`，
+     而助手气泡的 div 同时挂着 `markdown-body message-text` 两个类 ——
+     一旦继承 pre-wrap，HTML 块标签之间的换行符就会被当作真实换行渲染，
+     每个段落之间凭空多出一整行（实测 24px 的间隔里 19px 是它，只剩 5px 是 margin）。
+     marked 已配置 `breaks: true`，真正的换行会转成 <br>，不需要 pre-wrap。 */
+  white-space: normal;
+}
+.markdown-body > :deep(:first-child) {
+  margin-top: 0;
+}
+.markdown-body > :deep(:last-child) {
+  margin-bottom: 0;
 }
 .markdown-body :deep(p) {
-  margin: 0 0 0.4em 0;
+  margin: 0 0 0.6em;
 }
 .markdown-body :deep(p:last-child) {
   margin-bottom: 0;
+}
+/* 模型偶尔会吐出只含空白的段落（连续空行 / 多余的全角空格），
+   它们看不见却独占一行高度 —— 直接压掉。
+   两条规则分开写：:has 不被支持时不能连累 p:empty 一起失效。 */
+.markdown-body :deep(p:empty) {
+  display: none;
+}
+.markdown-body :deep(p:has(> br:only-child)) {
+  display: none;
 }
 .markdown-body :deep(h1),
 .markdown-body :deep(h2),
@@ -3897,7 +4003,7 @@ onUnmounted(() => {
 .markdown-body :deep(h4),
 .markdown-body :deep(h5),
 .markdown-body :deep(h6) {
-  margin: 0.8em 0 0.4em;
+  margin: 0.9em 0 0.35em;
   font-weight: 600;
   line-height: 1.3;
 }
@@ -3909,26 +4015,33 @@ onUnmounted(() => {
 .markdown-body :deep(h6) { font-size: 1em; }
 .markdown-body :deep(ul),
 .markdown-body :deep(ol) {
-  margin: 0.4em 0 0.6em;
-  padding-left: 1.6em;
+  margin: 0.35em 0 0.55em;
+  padding-left: 1.35em;
 }
 .markdown-body :deep(li) {
   margin: 0.2em 0;
 }
+/* 松列表（项内是 <p>）去掉段落的额外下边距，否则每个列表项又回到"两行高" */
+.markdown-body :deep(li > p) {
+  margin: 0;
+}
+.markdown-body :deep(li > p + p) {
+  margin-top: 0.3em;
+}
 .markdown-body :deep(li > ul),
 .markdown-body :deep(li > ol) {
-  margin: 0.2em 0;
+  margin: 0.15em 0 0;
 }
 .markdown-body :deep(blockquote) {
-  margin: 0.6em 0;
-  padding: 0.2em 0.9em;
+  margin: 0.55em 0;
+  padding: 0.15em 0.85em;
   border-left: 3px solid var(--color-primary);
   background-color: var(--color-hover);
   color: var(--color-text-secondary);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 .markdown-body :deep(blockquote p) {
-  margin: 0.2em 0;
+  margin: 0.15em 0;
 }
 .markdown-body :deep(code) {
   font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
@@ -3939,12 +4052,12 @@ onUnmounted(() => {
   color: var(--color-primary);
 }
 .markdown-body :deep(pre) {
-  margin: 0.6em 0;
-  padding: 0.9em 1em;
+  margin: 0.55em 0;
+  padding: 0.8em 1em;
   background-color: var(--color-code-bg, #1e1e2e);
   border-radius: var(--radius-md);
   overflow-x: auto;
-  line-height: 1.5;
+  line-height: 1.45;
 }
 .markdown-body :deep(pre code) {
   padding: 0;

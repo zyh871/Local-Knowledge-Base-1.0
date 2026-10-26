@@ -18,6 +18,7 @@ from app.core.config import Settings, get_settings
 from app.core.deps import get_redis_optional, get_rag_chain_dep
 from app.services.agent_service import AgentService
 from app.services.conversation_service import ConversationService
+from app.services.creation_service import CreationService
 from app.services.document_service import DocumentService
 from app.services.feedback_service import FeedbackService
 from app.services.model_service import ModelService
@@ -113,6 +114,15 @@ async def get_model_service(settings: SettingsDep) -> ModelService:
     return ModelService(settings=settings)
 
 
+async def get_creation_service(settings: SettingsDep) -> CreationService:
+    """AI 创作用例。
+
+    不注入 chain / graph：文生图只走一次 HTTP，与检索、编排都无关。
+    唯一的模型依赖（参考图的视觉描述）由 rag 层自己取。
+    """
+    return CreationService(settings=settings.model)
+
+
 QAServiceDep = Annotated[QAService, Depends(get_qa_service)]
 DocumentServiceDep = Annotated[DocumentService, Depends(get_document_service)]
 ConversationServiceDep = Annotated[ConversationService, Depends(get_conversation_service)]
@@ -124,3 +134,4 @@ SystemServiceDep = Annotated[SystemService, Depends(get_system_service)]
 LongTextServiceDep = Annotated[LongTextService, Depends(get_long_text_service)]
 WorkflowServiceDep = Annotated[WorkflowService, Depends(get_workflow_service)]
 ModelServiceDep = Annotated[ModelService, Depends(get_model_service)]
+CreationServiceDep = Annotated[CreationService, Depends(get_creation_service)]

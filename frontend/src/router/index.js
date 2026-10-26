@@ -19,6 +19,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/create',
+    name: 'Create',
+    component: () => import('../views/CreateView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/models',
     name: 'ModelSettings',
     component: () => import('../views/ModelSettings.vue'),
