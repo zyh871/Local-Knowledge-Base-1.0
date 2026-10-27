@@ -33,7 +33,9 @@ def merge_sources(left: list[dict], right: list[dict]) -> list[dict]:
             continue
         seen.add(key)
         merged.append(item)
-    return merged
+    # 合并后统一重编号：知识库与联网来源各自从 1 开始，
+    # 不重排会出现重复的 [1]，引用会跳到错误卡片。
+    return renumber_sources(merged)
 
 
 def merge_timings(left: dict, right: dict) -> dict:
@@ -123,6 +125,7 @@ from app.utils.documents import (  # noqa: E402
     doc_to_dict,
     docs_to_dicts,
     format_docs_from_state,
+    renumber_sources,
     sources_from_state,
 )
 

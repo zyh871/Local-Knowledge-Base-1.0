@@ -45,49 +45,106 @@
         <!-- 最近对话标题 -->
         <div v-if="chatHistory.length > 0" class="chat-section-header text-xs text-gray-400 px-3 py-2 font-medium tracking-wide">最近对话</div>
 
-        <div
-          v-for="chat in sortedChatHistory"
-          :key="chat.id"
-          :class="['chat-item group flex items-center gap-2 px-3 py-2.5 cursor-pointer mb-1', { active: chat.id === conversationId, selected: batchMode && selectedChatIds.has(chat.id), pinned: isPinned(chat.id) }]"
-          @click="batchMode ? toggleSelectChat(chat.id) : switchChat(chat.id)"
-        >
-          <input v-if="batchMode" type="checkbox" :checked="selectedChatIds.has(chat.id)" @click.stop="toggleSelectChat(chat.id)" class="mt-0.5 shrink-0" />
-          <svg v-if="isPinned(chat.id)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="shrink-0 chat-item-icon pinned-icon">
-            <path d="M12 17v5"/>
-            <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>
-          </svg>
-          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="shrink-0 chat-item-icon">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
-          <div class="flex-1 min-w-0">
-            <template v-if="editingChatId === chat.id">
+        <template v-for="entry in chatListItems" :key="entry.key">
+          <!-- 分组头：折叠 / 计数 / 操作菜单 -->
+          <div v-if="entry.type === 'group'" class="chat-group-header">
+            <div
+              class="chat-group-main"
+              role="button"
+              tabindex="0"
+              @click="toggleGroupCollapse(entry.name)"
+              @keydown.enter.prevent="toggleGroupCollapse(entry.name)"
+              :title="collapsedGroups[entry.name] ? '展开分组' : '折叠分组'"
+            >
+              <svg
+                class="chat-group-chevron"
+                :class="{ collapsed: collapsedGroups[entry.name] }"
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+              <template v-if="groupEditing.name !== entry.name">
+                <span class="chat-group-name">{{ entry.name }}</span>
+                <span class="chat-group-count">{{ entry.count }}</span>
+              </template>
               <input
-                v-model="editingChatTitle"
+                v-else
+                v-model="groupEditing.value"
+                class="group-rename-input"
+                maxlength="20"
                 @click.stop
-                @keydown.enter="saveRename"
-                @keydown.esc="cancelRename"
-                @blur="saveRename"
-                class="rename-input w-full text-sm px-1.5 py-0.5 outline-none"
-                ref="renameInputRef"
+                @keydown.enter.prevent="saveRenameGroup"
+                @keydown.esc="cancelRenameGroup"
+                @blur="saveRenameGroup"
               />
-            </template>
-            <template v-else>
-              <div class="relative">
-                <p class="text-sm truncate chat-item-title">{{ chat.title }}</p>
-                <div class="chat-tooltip">{{ chat.title }}</div>
-              </div>
-            </template>
-          </div>
-          <div v-if="editingChatId !== chat.id && !batchMode" class="flex items-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button @click.stop="openContextMenuAtButton($event, chat)" class="p-1 chat-menu-btn" aria-label="更多操作" title="更多操作">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <circle cx="12" cy="5" r="2"/>
-                <circle cx="12" cy="12" r="2"/>
-                <circle cx="12" cy="19" r="2"/>
+            </div>
+            <button
+              v-if="!entry.pinned"
+              class="chat-group-more"
+              @click.stop="openGroupMenu($event, entry.name)"
+              title="分组操作"
+              aria-label="分组操作"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="12" cy="5" r="1.6"/>
+                <circle cx="12" cy="12" r="1.6"/>
+                <circle cx="12" cy="19" r="1.6"/>
               </svg>
             </button>
           </div>
-        </div>
+
+          <!-- 空分组占位 -->
+          <div v-else-if="entry.type === 'empty'" class="chat-group-empty">暂无对话</div>
+
+          <!-- 会话项 -->
+          <div
+            v-else
+            :class="['chat-item group flex items-center gap-2 px-3 py-2.5 cursor-pointer mb-1', { active: entry.chat.id === conversationId, selected: batchMode && selectedChatIds.has(entry.chat.id), pinned: isPinned(entry.chat.id) }]"
+            @click="batchMode ? toggleSelectChat(entry.chat.id) : switchChat(entry.chat.id)"
+          >
+            <input v-if="batchMode" type="checkbox" :checked="selectedChatIds.has(entry.chat.id)" @click.stop="toggleSelectChat(entry.chat.id)" class="mt-0.5 shrink-0" />
+            <svg v-if="isPinned(entry.chat.id)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="shrink-0 chat-item-icon pinned-icon">
+              <path d="M12 17v5"/>
+              <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>
+            </svg>
+            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="shrink-0 chat-item-icon">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <div class="flex-1 min-w-0">
+              <template v-if="editingChatId === entry.chat.id">
+                <input
+                  v-model="editingChatTitle"
+                  @click.stop
+                  @keydown.enter="saveRename"
+                  @keydown.esc="cancelRename"
+                  @blur="saveRename"
+                  class="rename-input w-full text-sm px-1.5 py-0.5 outline-none"
+                  ref="renameInputRef"
+                />
+              </template>
+              <template v-else>
+                <div class="relative">
+                  <p class="text-sm truncate chat-item-title">{{ entry.chat.title }}</p>
+                  <div class="chat-tooltip">{{ entry.chat.title }}</div>
+                </div>
+              </template>
+            </div>
+            <div v-if="editingChatId !== entry.chat.id && !batchMode" class="flex items-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button @click.stop="openContextMenuAtButton($event, entry.chat)" class="p-1 chat-menu-btn" aria-label="更多操作" title="更多操作">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="12" cy="5" r="2"/>
+                  <circle cx="12" cy="12" r="2"/>
+                  <circle cx="12" cy="19" r="2"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </template>
 
         <!-- Context Menu -->
         <teleport to="body">
@@ -124,33 +181,11 @@
               </svg>
               <span>分享此对话</span>
             </div>
-            <div class="context-menu-item has-submenu" @click="handleContextAction('move')">
+            <div class="context-menu-item" @click="handleContextAction('move')">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
               </svg>
               <span>移动到分组</span>
-              <svg class="submenu-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="9 18 15 12 9 6"/>
-              </svg>
-            </div>
-            <div v-if="contextMenu.showGroupSubmenu" class="context-submenu" :style="{ top: contextMenu.y + 'px', left: (contextMenu.x + 200) + 'px' }">
-              <div v-if="groups.length === 0" class="context-menu-item disabled">
-                <span>暂无分组</span>
-              </div>
-              <div
-                v-for="g in groups"
-                :key="g"
-                class="context-menu-item"
-                @click="handleContextAction('move:' + g)"
-              >
-                <span>{{ g }}</span>
-              </div>
-              <div class="context-menu-item" @click="handleContextAction('move:__new__')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M12 5v14M5 12h14"/>
-                </svg>
-                <span>新建分组...</span>
-              </div>
             </div>
             <div class="context-menu-item has-submenu" @click="handleContextAction('export')">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -187,6 +222,32 @@
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
               </svg>
               <span>删除此对话</span>
+            </div>
+          </div>
+        </teleport>
+
+        <!-- 分组操作菜单 -->
+        <teleport to="body">
+          <div
+            v-if="groupMenu.visible"
+            class="context-menu group-menu"
+            :style="{ top: groupMenu.y + 'px', left: groupMenu.x + 'px' }"
+            @click.stop
+          >
+            <div class="context-menu-item" @click="handleGroupMenu('rename')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 20h9"/>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+              </svg>
+              <span>重命名</span>
+            </div>
+            <div class="context-menu-divider"></div>
+            <div class="context-menu-item danger" @click="handleGroupMenu('delete')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
+              <span>删除此分组</span>
             </div>
           </div>
         </teleport>
@@ -227,32 +288,84 @@
 
           <div v-if="chatHistory.length > 0" class="chat-section-header text-xs text-gray-400 px-3 py-2 font-medium tracking-wide">最近对话</div>
 
-          <div
-            v-for="chat in sortedChatHistory"
-            :key="'mobile-' + chat.id"
-            :class="['chat-item group flex items-center gap-2 px-3 py-2.5 cursor-pointer mb-1', { active: chat.id === conversationId }]"
-            @click="switchChat(chat.id); sidebarOpen = false"
-          >
-            <svg v-if="isPinned(chat.id)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="shrink-0 chat-item-icon pinned-icon">
-              <path d="M12 17v5"/>
-              <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>
-            </svg>
-            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="shrink-0 chat-item-icon">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            </svg>
-            <div class="flex-1 min-w-0">
-              <p class="text-sm truncate chat-item-title">{{ chat.title }}</p>
-            </div>
-            <div class="flex items-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button @click.stop="openContextMenuAtButton($event, chat)" class="p-1 chat-menu-btn" aria-label="更多操作">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <circle cx="12" cy="5" r="2"/>
-                  <circle cx="12" cy="12" r="2"/>
-                  <circle cx="12" cy="19" r="2"/>
+          <template v-for="entry in chatListItems" :key="'mobile-' + entry.key">
+            <div v-if="entry.type === 'group'" class="chat-group-header">
+              <div
+                class="chat-group-main"
+                role="button"
+                tabindex="0"
+                @click="toggleGroupCollapse(entry.name)"
+                @keydown.enter.prevent="toggleGroupCollapse(entry.name)"
+              >
+                <svg
+                  class="chat-group-chevron"
+                  :class="{ collapsed: collapsedGroups[entry.name] }"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+                <template v-if="groupEditing.name !== entry.name">
+                  <span class="chat-group-name">{{ entry.name }}</span>
+                  <span class="chat-group-count">{{ entry.count }}</span>
+                </template>
+                <input
+                  v-else
+                  v-model="groupEditing.value"
+                  class="group-rename-input"
+                  maxlength="20"
+                  @click.stop
+                  @keydown.enter.prevent="saveRenameGroup"
+                  @keydown.esc="cancelRenameGroup"
+                  @blur="saveRenameGroup"
+                />
+              </div>
+              <button
+                v-if="!entry.pinned"
+                class="chat-group-more"
+                @click.stop="openGroupMenu($event, entry.name)"
+                aria-label="分组操作"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="12" cy="5" r="1.6"/>
+                  <circle cx="12" cy="12" r="1.6"/>
+                  <circle cx="12" cy="19" r="1.6"/>
                 </svg>
               </button>
             </div>
-          </div>
+
+            <div v-else-if="entry.type === 'empty'" class="chat-group-empty">暂无对话</div>
+
+            <div
+              v-else
+              :class="['chat-item group flex items-center gap-2 px-3 py-2.5 cursor-pointer mb-1', { active: entry.chat.id === conversationId }]"
+              @click="switchChat(entry.chat.id); sidebarOpen = false"
+            >
+              <svg v-if="isPinned(entry.chat.id)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="shrink-0 chat-item-icon pinned-icon">
+                <path d="M12 17v5"/>
+                <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>
+              </svg>
+              <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="shrink-0 chat-item-icon">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm truncate chat-item-title">{{ entry.chat.title }}</p>
+              </div>
+              <div class="flex items-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button @click.stop="openContextMenuAtButton($event, entry.chat)" class="p-1 chat-menu-btn" aria-label="更多操作">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <circle cx="12" cy="5" r="2"/>
+                    <circle cx="12" cy="12" r="2"/>
+                    <circle cx="12" cy="19" r="2"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
       <UserMenu
@@ -268,6 +381,96 @@
     </div>
 
     </template>
+
+    <!-- 移动到分组：面板式选择（点击即移动，当前分组带勾选） -->
+    <teleport to="body">
+      <div
+        v-if="moveDialog.visible"
+        class="modal-overlay"
+        @click.self="closeMoveDialog"
+      >
+        <div class="move-dialog" role="dialog" aria-modal="true" aria-label="移动到分组">
+          <header class="move-dialog-header">
+            <div class="min-w-0">
+              <h3 class="move-dialog-title">移动到分组</h3>
+              <p class="move-dialog-sub truncate">{{ moveDialog.chatTitle }}</p>
+            </div>
+            <button class="move-dialog-close" @click="closeMoveDialog" aria-label="关闭">×</button>
+          </header>
+
+          <div class="move-group-list">
+            <button
+              class="move-group-item"
+              :class="{ current: !moveDialog.currentGroup }"
+              :disabled="!moveDialog.currentGroup"
+              @click="applyMove('')"
+            >
+              <span class="move-group-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="9"/>
+                  <path d="M8 12h8"/>
+                </svg>
+              </span>
+              <span class="move-group-name">未分组</span>
+              <span v-if="!moveDialog.currentGroup" class="move-group-badge">当前</span>
+              <svg v-else class="move-group-check" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </button>
+
+            <button
+              v-for="g in groups"
+              :key="g"
+              class="move-group-item"
+              :class="{ current: g === moveDialog.currentGroup }"
+              :disabled="g === moveDialog.currentGroup"
+              @click="applyMove(g)"
+            >
+              <span class="move-group-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                </svg>
+              </span>
+              <span class="move-group-name truncate">{{ g }}</span>
+              <span v-if="g === moveDialog.currentGroup" class="move-group-badge">当前</span>
+              <svg v-else class="move-group-check" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </button>
+
+            <p v-if="groups.length === 0" class="move-group-empty">
+              还没有分组。在下方输入名称，立即创建并移入。
+            </p>
+          </div>
+
+          <div class="move-create">
+            <input
+              v-model="newGroupName"
+              class="move-create-input"
+              maxlength="20"
+              placeholder="新建分组并移入..."
+              @keydown.enter.prevent="createGroupAndMove"
+              @input="newGroupError = ''"
+            />
+            <button
+              class="move-create-btn"
+              :disabled="!newGroupName.trim()"
+              @click="createGroupAndMove"
+            >
+              新建并移入
+            </button>
+          </div>
+          <p v-if="newGroupError" class="move-create-error">{{ newGroupError }}</p>
+        </div>
+      </div>
+    </teleport>
+
+    <!-- 轻量反馈 -->
+    <teleport to="body">
+      <transition name="toast-fade">
+        <div v-if="toast.visible" class="app-toast" role="status">{{ toast.message }}</div>
+      </transition>
+    </teleport>
 
     <!-- Main chat area -->
     <section class="chat-section flex-1 flex flex-col min-w-0 min-h-0">
@@ -428,7 +631,12 @@
 
               <!-- streaming / done state -->
               <template v-if="msg.status !== 'thinking' || !!msg.reasoning">
-                <div v-if="msg.content" class="markdown-body text-sm message-text" v-html="renderMarkdown(msg.content)"></div>
+                <div
+                  v-if="msg.content"
+                  class="markdown-body text-sm message-text"
+                  v-html="renderMarkdown(msg.content, msg.sources)"
+                  @click="onCitationClick($event, idx)"
+                ></div>
 
                 <!-- Source section: only shown when done and sources exist -->
                 <div v-if="msg.status === 'done' && msg.sources && msg.sources.length > 0" class="source-section mt-3 pt-3">
@@ -442,7 +650,7 @@
                   <div v-if="expandedSources[idx]" class="source-content p-3">
                     <!-- 网络来源：可点击的链接 -->
                     <div v-if="isWebSource(msg)">
-                      <div v-for="(source, sIdx) in msg.sources" :key="sIdx" class="web-source-item mb-2 last:mb-0">
+                      <div v-for="(source, sIdx) in msg.sources" :key="sIdx" :id="`src-${idx}-${sIdx + 1}`" class="web-source-item mb-2 last:mb-0">
                         <a :href="source.href || source.url" target="_blank" rel="noopener noreferrer" class="web-source-title">
                           <span class="source-num">{{ sIdx + 1 }}</span>
                           <span class="source-title-text">{{ source.title || source.file }}</span>
@@ -458,9 +666,29 @@
                     </div>
                     <!-- 知识库来源 -->
                     <div v-else>
-                      <div v-for="(source, sIdx) in msg.sources" :key="sIdx" class="source-item mb-2 last:mb-0">
-                        <p class="text-sm truncate source-file">{{ source.file }}</p>
+                      <div
+                        v-for="(source, sIdx) in msg.sources"
+                        :key="sIdx"
+                        :id="`src-${idx}-${sIdx + 1}`"
+                        class="source-item mb-2 last:mb-0"
+                      >
+                        <div class="flex items-center gap-1.5">
+                          <span class="source-num">{{ sIdx + 1 }}</span>
+                          <p class="text-sm truncate source-file">{{ source.file }}</p>
+                          <span
+                            v-if="source.confidence"
+                            class="source-conf"
+                            :class="`conf-${source.confidence}`"
+                            title="按混合检索排序（非相似度分数）"
+                          >{{ confidenceLabel(source.confidence) }}</span>
+                        </div>
                         <p class="text-xs mt-1 line-clamp-2 source-preview">{{ source.content_preview }}...</p>
+                        <button
+                          v-if="hasMoreSourceText(source)"
+                          @click="toggleSourceItem(idx, sIdx)"
+                          class="source-expand-btn"
+                        >{{ isSourceItemOpen(idx, sIdx) ? '收起原文' : '展开原文' }}</button>
+                        <pre v-if="isSourceItemOpen(idx, sIdx)" class="source-full-text">{{ source.content }}</pre>
                       </div>
                     </div>
                   </div>
@@ -480,13 +708,13 @@
                   <span class="text-xs message-time">{{ formatTime() }}</span>
                   <div class="flex items-center gap-1 ml-auto">
                     <button @click="submitFeedback(idx, 1)" :class="['msg-action-btn', { 'active': feedbackState[idx] === 1 }]" :title="feedbackState[idx] === 1 ? '已点赞' : '有用'" aria-label="有用">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M20 8L10 17l-5-5"/>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
                       </svg>
                     </button>
                     <button @click="submitFeedback(idx, -1)" :class="['msg-action-btn', { 'active': feedbackState[idx] === -1 }]" :title="feedbackState[idx] === -1 ? '已踩' : '没用'" aria-label="没用">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M4 16l10-9 5 5"/>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
                       </svg>
                     </button>
                     <button @click="speakAnswer(idx)" :class="['msg-action-btn', { active: speakingIdx === idx }]" :title="speakingIdx === idx ? '停止朗读' : '朗读'" aria-label="朗读">
@@ -897,6 +1125,19 @@ import { ref, reactive, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import {
+  injectCitations,
+  confidenceLabel,
+  hasMoreSourceText,
+} from '../utils/citations'
+import {
+  buildChatListItems,
+  deleteGroupEverywhere,
+  moveChatToGroup,
+  normalizeGroupName,
+  renameGroupEverywhere,
+  validateNewGroupName,
+} from '../utils/chatGroups'
 import AppLayout from '../layouts/AppLayout.vue'
 import SidebarNav from '../components/sidebar/SidebarNav.vue'
 import UserMenu from '../components/sidebar/UserMenu.vue'
@@ -1062,12 +1303,20 @@ const contextMenu = reactive({ visible: false, x: 0, y: 0, chatId: '', showGroup
 const pinnedChats = ref([])
 const groups = ref([])
 
-const sortedChatHistory = computed(() => {
-  const pinnedIds = new Set(pinnedChats.value)
-  const pinned = chatHistory.value.filter(c => pinnedIds.has(c.id))
-  const unpinned = chatHistory.value.filter(c => !pinnedIds.has(c.id))
-  return [...pinned, ...unpinned]
+// ── 分组交互状态（F-移动到分组）──────────────────────────────
+const collapsedGroups = ref({})
+const groupEditing = reactive({ name: '', value: '' })
+const groupMenu = reactive({ visible: false, x: 0, y: 0, name: '' })
+const moveDialog = reactive({
+  visible: false,
+  chatId: '',
+  chatTitle: '',
+  currentGroup: '',
 })
+const newGroupName = ref('')
+const newGroupError = ref('')
+const toast = reactive({ visible: false, message: '' })
+let toastTimer = null
 
 const profileForm = ref({ display_name: '', profession: '', language: 'auto' })
 const profileFormFactsText = ref('')
@@ -1092,6 +1341,20 @@ const localExampleQuestions = ref([
 ])
 const feedbackState = ref({})
 const chatSearchQuery = ref('')
+
+/**
+ * 侧栏条目：置顶 → 各分组 → 未分组，分组头与会话交错。
+ * 没有任何分组时退化为原来的扁平「最近对话」，不影响老用户习惯。
+ */
+const chatListItems = computed(() =>
+  buildChatListItems({
+    chats: chatHistory.value,
+    groups: groups.value,
+    pinnedIds: pinnedChats.value,
+    query: chatSearchQuery.value,
+    collapsed: collapsedGroups.value,
+  }),
+)
 const selectedChatIds = ref(new Set())
 const batchMode = ref(false)
 const longTextPromptVisible = ref(false)
@@ -1414,11 +1677,46 @@ const currentChatTitle = computed(() => {
   return chat ? chat.title : '新对话'
 })
 
-function renderMarkdown(text) {
+function renderMarkdown(text, sources) {
   if (!text) return ''
-  const html = marked.parse(text)
+  const html = marked.parse(injectCitations(text, sources))
   return DOMPurify.sanitize(html)
 }
+
+/** 点击引用：展开来源区 → 滚动到对应卡片 → 短暂高亮。 */
+function onCitationClick(event, msgIdx) {
+  const el = event.target.closest('.cite-ref')
+  if (!el) return
+  event.stopPropagation()
+  const index = Number(el.dataset.cite)
+  if (!index) return
+  expandedSources.value[msgIdx] = true
+  nextTick(() => {
+    const card = document.getElementById(`src-${msgIdx}-${index}`)
+    if (!card) return
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    card.classList.add('cite-flash')
+    window.setTimeout(() => card.classList.remove('cite-flash'), 1400)
+  })
+}
+
+/** 每条来源的「展开原文」开关，key = `${消息下标}:${来源下标}` */
+const expandedSourceItems = ref({})
+
+function sourceItemKey(msgIdx, sIdx) {
+  return `${msgIdx}:${sIdx}`
+}
+
+function toggleSourceItem(msgIdx, sIdx) {
+  const key = sourceItemKey(msgIdx, sIdx)
+  expandedSourceItems.value[key] = !expandedSourceItems.value[key]
+}
+
+function isSourceItemOpen(msgIdx, sIdx) {
+  return !!expandedSourceItems.value[sourceItemKey(msgIdx, sIdx)]
+}
+
+// hasMoreSourceText / confidenceLabel 见 ../utils/citations（纯函数，便于单测）
 
 function getAuthHeader() {
   return { Authorization: `Bearer ${token.value}` }
@@ -1444,7 +1742,26 @@ function loadChatData() {
       chatHistory.value = data.chatHistory || []
       conversationId.value = data.conversationId || ''
       pinnedChats.value = data.pinnedChats || []
-      groups.value = data.groups || []
+
+      // 分组数据自愈：去空/去重/排序，并把「聊天引用了但未登记」的分组补进来。
+      // 否则历史脏数据会让会话在分组视图里凭空消失。
+      groups.value = Array.from(
+        new Set((data.groups || []).map(normalizeGroupName).filter(Boolean)),
+      )
+      const knownGroups = new Set(groups.value)
+      for (const chat of chatHistory.value) {
+        const g = normalizeGroupName(chat.group)
+        if (!g) {
+          delete chat.group
+          continue
+        }
+        chat.group = g
+        if (!knownGroups.has(g)) {
+          groups.value.push(g)
+          knownGroups.add(g)
+        }
+      }
+      groups.value.sort((a, b) => a.localeCompare(b, 'zh'))
 
       if (chatHistory.value.length === 0) {
         createTempChat()
@@ -1731,27 +2048,159 @@ async function handleContextAction(action) {
   } else if (action === 'delete') {
     deleteChat(chatId)
   } else if (action === 'move') {
-    contextMenu.showGroupSubmenu = true
-    contextMenu.showExportSubmenu = false
-    contextMenu.visible = true
-    return
-  } else if (action.startsWith('move:')) {
-    const group = action.slice(5)
     const chat = chatHistory.value.find(c => c.id === chatId)
-    if (!chat) return
-    if (group === '__new__') {
-      const name = prompt('输入新分组名称：')
-      if (!name) return
-      if (!groups.value.includes(name)) {
-        groups.value.push(name)
-        groups.value.sort((a, b) => a.localeCompare(b, 'zh'))
-      }
-      chat.group = name
-    } else {
-      chat.group = group
-    }
-    saveChatData()
+    if (chat) openMoveDialog(chat)
   }
+}
+
+// ── 分组：移动 / 新建 / 重命名 / 删除 / 折叠 ──────────────────
+
+function showToast(message) {
+  toast.message = message
+  toast.visible = true
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => {
+    toast.visible = false
+  }, 1800)
+}
+
+function openMoveDialog(chat) {
+  moveDialog.visible = true
+  moveDialog.chatId = chat.id
+  moveDialog.chatTitle = chat.title || '未命名对话'
+  moveDialog.currentGroup = normalizeGroupName(chat.group)
+  newGroupName.value = ''
+  newGroupError.value = ''
+  document.addEventListener('keydown', onMoveDialogKeydown)
+}
+
+function closeMoveDialog() {
+  moveDialog.visible = false
+  document.removeEventListener('keydown', onMoveDialogKeydown)
+}
+
+function onMoveDialogKeydown(event) {
+  if (event.key === 'Escape') closeMoveDialog()
+}
+
+/** 执行移动；同组时不产生写入，只给出提示。 */
+function applyMove(groupName) {
+  const chat = chatHistory.value.find((c) => c.id === moveDialog.chatId)
+  if (!chat) {
+    closeMoveDialog()
+    return
+  }
+  const target = normalizeGroupName(groupName)
+  if (!moveChatToGroup(chat, target)) {
+    showToast(target ? `已在「${target}」` : '已在该分组')
+    closeMoveDialog()
+    return
+  }
+  saveChatData()
+  showToast(target ? `已移动到「${target}」` : '已移出分组')
+  closeMoveDialog()
+}
+
+/** 新建分组并立即移入；重名时直接移到已有分组（而不是报错卡住）。 */
+function createGroupAndMove() {
+  const check = validateNewGroupName(groups.value, newGroupName.value)
+  if (!check.ok) {
+    if (check.reason === 'duplicate') {
+      applyMove(check.name)
+      return
+    }
+    newGroupError.value =
+      check.reason === 'empty'
+        ? '请输入分组名称'
+        : check.reason === 'too_long'
+          ? '分组名称不能超过 20 个字符'
+          : '该名称为保留名称'
+    return
+  }
+  groups.value.push(check.name)
+  groups.value.sort((a, b) => a.localeCompare(b, 'zh'))
+  applyMove(check.name)
+}
+
+function toggleGroupCollapse(name) {
+  if (groupEditing.name === name) return
+  collapsedGroups.value[name] = !collapsedGroups.value[name]
+}
+
+function startRenameGroup(name) {
+  groupEditing.name = name
+  groupEditing.value = name
+  nextTick(() => {
+    // 桌面侧栏与移动抽屉各有一份输入框，只聚焦当前可见的那个
+    const inputs = Array.from(document.querySelectorAll('.group-rename-input'))
+    const input = inputs.find((el) => el.offsetParent !== null) || inputs[0]
+    if (input) {
+      input.focus()
+      input.select()
+    }
+  })
+}
+
+function cancelRenameGroup() {
+  groupEditing.name = ''
+  groupEditing.value = ''
+}
+
+function saveRenameGroup() {
+  if (!groupEditing.name) return
+  const res = renameGroupEverywhere(
+    chatHistory.value,
+    groups.value,
+    groupEditing.name,
+    groupEditing.value,
+  )
+  if (!res.ok) {
+    if (res.reason === 'duplicate') showToast('已有同名分组')
+    else if (res.reason === 'empty') showToast('分组名称不能为空')
+    else if (res.reason === 'too_long') showToast('分组名称不能超过 20 个字符')
+    else showToast('重命名失败')
+    return
+  }
+  groups.value.sort((a, b) => a.localeCompare(b, 'zh'))
+  saveChatData()
+  groupEditing.name = ''
+  groupEditing.value = ''
+  showToast(`已重命名为「${res.name}」`)
+}
+
+function deleteGroup(name) {
+  const count = chatHistory.value.filter(
+    (c) => normalizeGroupName(c.group) === name,
+  ).length
+  const hint = count
+    ? `删除分组「${name}」？组内 ${count} 个对话会移到「未分组」。`
+    : `删除空分组「${name}」？`
+  if (!window.confirm(hint)) return
+  const affected = deleteGroupEverywhere(chatHistory.value, groups.value, name)
+  saveChatData()
+  showToast(affected ? `已删除，${affected} 个对话移到未分组` : '已删除分组')
+}
+
+function openGroupMenu(event, name) {
+  event.stopPropagation()
+  const rect = event.currentTarget.getBoundingClientRect()
+  groupMenu.name = name
+  groupMenu.x = Math.max(8, rect.right - 132)
+  groupMenu.y = rect.bottom + 4
+  groupMenu.visible = true
+  document.addEventListener('click', closeGroupMenu, { once: true })
+}
+
+function closeGroupMenu() {
+  groupMenu.visible = false
+}
+
+function handleGroupMenu(action) {
+  const name = groupMenu.name
+  closeGroupMenu()
+  if (!name) return
+  if (action === 'rename') startRenameGroup(name)
+  else if (action === 'delete') deleteGroup(name)
 }
 
 function handleImageSelect(event) {
@@ -2475,6 +2924,11 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  document.removeEventListener('keydown', onMoveDialogKeydown)
+  if (toastTimer) {
+    clearTimeout(toastTimer)
+    toastTimer = null
+  }
   if (backendCheckTimer) {
     clearInterval(backendCheckTimer)
     backendCheckTimer = null
@@ -2600,6 +3054,272 @@ onUnmounted(() => {
   font-weight: 500;
   letter-spacing: 0.02em;
   user-select: none;
+}
+
+/* ── 会话分组 ─────────────────────────────────────────── */
+.chat-group-header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 2px 0;
+  padding-right: 2px;
+  border-radius: var(--radius-md);
+}
+.chat-group-header:hover {
+  background: var(--color-surface-secondary);
+}
+.chat-group-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+}
+.chat-group-chevron {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+  transition: transform 0.18s ease;
+}
+.chat-group-chevron.collapsed {
+  transform: rotate(-90deg);
+}
+.chat-group-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-group-count {
+  flex-shrink: 0;
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--color-surface-secondary);
+  color: var(--color-text-tertiary);
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+}
+.chat-group-more {
+  flex-shrink: 0;
+  padding: 4px;
+  border-radius: 6px;
+  color: var(--color-text-tertiary);
+  opacity: 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+.chat-group-header:hover .chat-group-more {
+  opacity: 1;
+}
+.chat-group-more:hover {
+  background: var(--color-primary-lighter);
+  color: var(--color-primary);
+}
+.chat-group-empty {
+  padding: 2px 8px 6px 28px;
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+}
+.group-rename-input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--color-primary);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  outline: none;
+}
+.group-menu {
+  min-width: 132px;
+}
+
+/* ── 移动到分组面板 ───────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.38);
+}
+.move-dialog {
+  width: min(420px, 100%);
+  max-height: min(560px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-light);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
+}
+.move-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.move-dialog-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.move-dialog-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+.move-dialog-close {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--color-text-tertiary);
+  font-size: 18px;
+  line-height: 1;
+}
+.move-dialog-close:hover {
+  background: var(--color-surface-secondary);
+  color: var(--color-text-primary);
+}
+.move-group-list {
+  margin-top: 12px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.move-group-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 10px;
+  text-align: left;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  transition: background-color 0.15s ease;
+}
+.move-group-item:hover:not(:disabled) {
+  background: var(--color-surface-secondary);
+}
+.move-group-item:disabled {
+  cursor: default;
+}
+.move-group-item.current {
+  background: var(--color-primary-lighter);
+  color: var(--color-primary);
+}
+.move-group-icon {
+  display: inline-flex;
+  color: var(--color-text-tertiary);
+}
+.move-group-item.current .move-group-icon {
+  color: var(--color-primary);
+}
+.move-group-name {
+  flex: 1;
+  min-width: 0;
+}
+.move-group-badge {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+}
+.move-group-check {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+  opacity: 0;
+}
+.move-group-item:hover .move-group-check {
+  opacity: 1;
+}
+.move-group-empty {
+  padding: 14px 10px;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.move-create {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border-light);
+}
+.move-create-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 10px;
+  background: var(--color-surface-secondary);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  outline: none;
+}
+.move-create-input:focus {
+  border-color: var(--color-primary);
+}
+.move-create-btn {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+}
+.move-create-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.move-create-error {
+  margin-top: 6px;
+  color: #dc2626;
+  font-size: 11px;
+}
+
+.app-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 36px;
+  z-index: 1300;
+  transform: translateX(-50%);
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.88);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.25);
+}
+.toast-fade-enter-active,
+.toast-fade-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.toast-fade-enter-from,
+.toast-fade-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(6px);
 }
 
 .chat-tooltip {
@@ -3199,6 +3919,95 @@ onUnmounted(() => {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+/* ── 引用可视化（F3）──────────────────────────────────── */
+.cite-ref {
+  display: inline-block;
+  margin: 0 1px;
+  padding: 0 3px;
+  border-radius: 4px;
+  background: var(--color-primary-lighter);
+  color: var(--color-primary);
+  font-size: 0.72em;
+  font-weight: 600;
+  line-height: 1.4;
+  vertical-align: super;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.cite-ref:hover,
+.cite-ref:focus-visible {
+  background: var(--color-primary);
+  color: #fff;
+  outline: none;
+}
+
+.source-conf {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.conf-high {
+  color: #0f6e56;
+  background: #e1f5ee;
+}
+
+.conf-medium {
+  color: #854f0b;
+  background: #faeeda;
+}
+
+.conf-low {
+  color: #5f5e5a;
+  background: #f1efe8;
+}
+
+.source-expand-btn {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--color-primary);
+}
+
+.source-expand-btn:hover {
+  text-decoration: underline;
+}
+
+.source-full-text {
+  margin-top: 6px;
+  padding: 8px 10px;
+  max-height: 240px;
+  overflow: auto;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-secondary);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.source-item.cite-flash,
+.web-source-item.cite-flash {
+  animation: citeFlash 1.4s ease;
+  border-radius: var(--radius-md);
+}
+
+@keyframes citeFlash {
+  0%,
+  100% {
+    background: transparent;
+  }
+  20%,
+  60% {
+    background: var(--color-primary-lighter);
+  }
 }
 
 /* Message meta */

@@ -23,6 +23,7 @@ from app.api.v1 import (
     qa,
     share,
     system,
+    teams,
     workflow,
 )
 from app.core.deps import rate_limit
@@ -55,3 +56,5 @@ api_router.include_router(system.router, tags=["系统"], dependencies=_global_l
 api_router.include_router(creation.router, tags=["创作"], dependencies=_global_limit)
 # AI 工作流：独立命名空间 `/workflow/*`，既有端点一行未改
 api_router.include_router(workflow.router, tags=["工作流"], dependencies=_global_limit)
+# 团队空间与角色权限：独立命名空间 `/teams/*`（与 /workflow/workspaces 区分）
+api_router.include_router(teams.router, tags=["团队空间"], dependencies=_global_limit)

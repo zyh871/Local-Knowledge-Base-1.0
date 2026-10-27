@@ -1,0 +1,20 @@
+# 离线 / 零出域部署覆盖配置
+#
+# 用法（在仓库根目录）：
+#   docker compose -f docker-compose.yml -f deploy/offline/docker-compose.offline.yml up -d
+#
+# 作用：把「开发默认值」收敛为「交付默认值」。
+# 配套：cp deploy/offline/.env.offline.example .env，然后按注释替换密钥。
+
+services:
+  backend:
+    environment:
+      - APP_ENV=prod
+      # 生产禁用内存降级：Redis 故障时应暴露而不是静默变单机
+      - REDIS_FALLBACK_TO_MEMORY=false
+      # 关闭「浏览服务器任意目录」——多用户/对外部署的高危面
+      - WORKFLOW_FS_BROWSE=false
+      # 关闭「用户自带模型端点」——避免服务器携密钥请求任意地址
+      - ALLOW_CUSTOM_MODELS=false
+      # checkpoint 落到 Redis，重启不丢审批状态
+      - GRAPH_CHECKPOINTER=redis

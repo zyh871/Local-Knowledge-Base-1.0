@@ -107,6 +107,9 @@
  "/models": [
   "get"
  ],
+ "/models/catalog": [
+  "get"
+ ],
  "/profile": [
   "get",
   "put"
@@ -121,6 +124,25 @@
   "get"
  ],
  "/stats": [
+  "get"
+ ],
+ "/teams": [
+  "get",
+  "post"
+ ],
+ "/teams/{team_id}": [
+  "delete",
+  "get",
+  "patch"
+ ],
+ "/teams/{team_id}/members": [
+  "get",
+  "post"
+ ],
+ "/teams/{team_id}/members/{username}": [
+  "delete"
+ ],
+ "/teams/{team_id}/permissions": [
   "get"
  ],
  "/token": [

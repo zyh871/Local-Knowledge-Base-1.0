@@ -26,6 +26,7 @@ from app.services.profile_service import ProfileService
 from app.services.qa_service import QAService
 from app.services.share_service import ShareService
 from app.services.system_service import SystemService
+from app.services.team_service import TeamService
 from app.services.text_service import LongTextService
 from app.services.workflow_service import WorkflowService
 
@@ -123,6 +124,14 @@ async def get_creation_service(settings: SettingsDep) -> CreationService:
     return CreationService(settings=settings.model)
 
 
+async def get_team_service(settings: SettingsDep) -> TeamService:
+    """团队空间用例。
+
+    只依赖配置（数据落在独立 `data/teams.db`），不碰 chain / graph / redis。
+    """
+    return TeamService(settings=settings)
+
+
 QAServiceDep = Annotated[QAService, Depends(get_qa_service)]
 DocumentServiceDep = Annotated[DocumentService, Depends(get_document_service)]
 ConversationServiceDep = Annotated[ConversationService, Depends(get_conversation_service)]
@@ -135,3 +144,4 @@ LongTextServiceDep = Annotated[LongTextService, Depends(get_long_text_service)]
 WorkflowServiceDep = Annotated[WorkflowService, Depends(get_workflow_service)]
 ModelServiceDep = Annotated[ModelService, Depends(get_model_service)]
 CreationServiceDep = Annotated[CreationService, Depends(get_creation_service)]
+TeamServiceDep = Annotated[TeamService, Depends(get_team_service)]

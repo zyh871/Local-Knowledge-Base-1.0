@@ -80,6 +80,11 @@ def web_search(state: RAGState, deps: Deps) -> dict:
         return {"search_context": ""}
 
     context, sources = build_search_context(result)
+    # 联网来源同样补上 index / id / confidence：
+    # 答案里的 [n] 引用要能同时跳到知识库来源与网络来源。
+    from app.utils.documents import annotate_sources
+
+    sources = annotate_sources(sources)
     logger.debug(f"联网上下文长度: {len(context)}, 来源数: {len(sources)}")
     return {"search_context": context, "sources": sources}
 
