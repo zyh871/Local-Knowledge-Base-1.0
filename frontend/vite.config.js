@@ -82,6 +82,36 @@ export default defineConfig(async ({ mode }) => {
   }
   console.log(`  ➜  [vite] API 代理: /api → ${apiTarget}`)
 
+  // /api 反代配置：dev（server）与生产预览（preview）共用，避免两处漂移
+  const apiProxy = {
+    '/api': {
+      target: apiTarget,
+      changeOrigin: true,
+      rewrite: (path) => path.replace(/^\/api/, ''),
+      secure: false,
+      ws: false,
+      headers: {
+        'Connection': 'keep-alive'
+      },
+      configure: (proxy) => {
+        // 把一长串 ECONNREFUSED 堆栈换成一句能直接照做的提示。
+        // 每 10 秒最多提示一次，避免轮询接口把终端刷满。
+        let warnedAt = 0
+        proxy.on('error', (err) => {
+          const now = Date.now()
+          if (now - warnedAt < 10000) return
+          warnedAt = now
+          const code = err.code || err.message
+          console.error(
+            `\n  ✖ [vite] 无法连接后端 ${apiTarget}（${code}）` +
+              `\n     启动后端：cd backend && venv/Scripts/python.exe -m uvicorn app.main:app --port ${portOf(apiTarget)}` +
+              `\n     后端不在这个端口？改 frontend/.env 的 VITE_API_TARGET（或删掉它用默认 8000）\n`
+          )
+        })
+      },
+    },
+  }
+
   return {
     plugins: [
       vue(),
@@ -95,34 +125,21 @@ export default defineConfig(async ({ mode }) => {
       },
     },
     server: {
-      proxy: {
-        '/api': {
-          target: apiTarget,
-          changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api/, ''),
-          secure: false,
-          ws: false,
-          headers: {
-            'Connection': 'keep-alive'
-          },
-          configure: (proxy) => {
-            // 把一长串 ECONNREFUSED 堆栈换成一句能直接照做的提示。
-            // 每 10 秒最多提示一次，避免轮询接口把终端刷满。
-            let warnedAt = 0
-            proxy.on('error', (err) => {
-              const now = Date.now()
-              if (now - warnedAt < 10000) return
-              warnedAt = now
-              const code = err.code || err.message
-              console.error(
-                `\n  ✖ [vite] 无法连接后端 ${apiTarget}（${code}）` +
-                  `\n     启动后端：cd backend && venv/Scripts/python.exe -m uvicorn app.main:app --port ${portOf(apiTarget)}` +
-                  `\n     后端不在这个端口？改 frontend/.env 的 VITE_API_TARGET（或删掉它用默认 8000）\n`
-              )
-            })
-          },
-        },
-      },
+      // 绑定 IPv4 回环：内网穿透(cloudflared)默认连 127.0.0.1，而 Vite 默认只绑 ::1
+      host: '127.0.0.1',
+      // 允许通过内网穿透域名（如 *.trycloudflare.com）访问，否则 Vite 会报
+      // "Blocked request. This host is not allowed."
+      allowedHosts: true,
+      proxy: apiProxy,
+    },
+    // 生产预览：npm run build → npm run preview（serve dist + /api 反代）。
+    // 隧道固定指向 4173，产物是压缩后的静态文件，且不含开发期 devtools。
+    preview: {
+      host: '127.0.0.1',
+      port: 4173,
+      strictPort: true,
+      allowedHosts: true,
+      proxy: apiProxy,
     },
   }
 })

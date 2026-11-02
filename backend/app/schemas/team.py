@@ -31,8 +31,18 @@ class MemberAdd(BaseModel):
 
 class MemberOut(BaseModel):
     username: str
+    user_id: str = ""
     role: str
     joined_at: float
+
+
+class TransferRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=64)
+
+
+class TeamInvitationCreate(BaseModel):
+    role: AssignableRole = "viewer"
+    ttl_hours: int = Field(72, ge=1, le=168)
 
 
 class TeamOut(BaseModel):

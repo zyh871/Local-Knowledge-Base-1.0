@@ -22,13 +22,23 @@ from app.core.exceptions import (
 
 @pytest.fixture()
 def team_repo(tmp_path, monkeypatch):
-    """把 team_repo 指向临时库，并在用例前后丢弃连接。"""
+    """把 team_repo 指向临时库，并在用例前后丢弃连接。
+
+    团队服务会通过 identity_service 解析 user_id，因此身份库也必须隔离，
+    否则测试会在真实 data/identity.db 里留下影子账号。
+    """
     from app.repositories import team_repo as repo
+    from app.repositories import user_repo
 
     monkeypatch.setattr(repo, "_db_path", lambda: str(tmp_path / "teams.db"))
+    monkeypatch.setattr(
+        user_repo, "_db_path", lambda: str(tmp_path / "identity.db")
+    )
     repo.reset_connection()
+    user_repo.reset_connection()
     yield repo
     repo.reset_connection()
+    user_repo.reset_connection()
 
 
 @pytest.fixture()
@@ -137,6 +147,41 @@ class TestTeamRoles:
         with pytest.raises(PermissionDeniedError):
             service.update_team(team["id"], "bob", name="hacked")
 
+    def test_only_owner_can_transfer(self, service):
+        team = service.create_team(name="t", description="", owner="alice")
+        service.add_member(team["id"], "alice", target="bob", role="admin")
+        with pytest.raises(PermissionDeniedError):
+            service.transfer_owner(team["id"], "bob", "alice")
+
+    def test_transfer_owner_demotes_actor(self, service):
+        team = service.create_team(name="t", description="", owner="alice")
+        service.add_member(team["id"], "alice", target="bob", role="editor")
+
+        result = service.transfer_owner(team["id"], "alice", "bob")
+        assert result["owner"] == "bob"
+        roles = {m["username"]: m["role"] for m in result["members"]}
+        assert roles == {"alice": "admin", "bob": "owner"}
+
+        with pytest.raises(PermissionDeniedError):
+            service.delete_team(team["id"], "alice")
+        assert service.delete_team(team["id"], "bob")["success"] is True
+
+    def test_cannot_transfer_to_self(self, service):
+        team = service.create_team(name="t", description="", owner="alice")
+        with pytest.raises(ValidationError):
+            service.transfer_owner(team["id"], "alice", "alice")
+
+    def test_migrate_legacy_teams_backfills_ids(self, team_repo):
+        from app.services.team_service import migrate_legacy_teams
+
+        team = team_repo.create_team(name="legacy", owner="olduser")
+        team_repo.upsert_member(team["id"], "olduser", "owner")
+        assert team_repo.get_team(team["id"])["owner_id"] == ""
+
+        assert migrate_legacy_teams() >= 2
+        assert team_repo.get_team(team["id"])["owner_id"]
+        assert team_repo.get_member(team["id"], "olduser")["user_id"]
+
 
 # ---------------------------------------------------------------------------
 #  HTTP 层：真实路由
@@ -178,3 +223,41 @@ class TestTeamHttp:
 
     def test_requires_auth(self, client, team_repo):
         assert client.get("/teams").status_code == 401
+
+    def test_team_invitation_link_joins(self, client, auth_headers, team_repo):
+        created = client.post(
+            "/teams", json={"name": "邀请测试", "description": ""}, headers=auth_headers
+        )
+        team_id = created.json()["id"]
+
+        inv = client.post(
+            f"/teams/{team_id}/invitations",
+            json={"role": "viewer", "ttl_hours": 24},
+            headers=auth_headers,
+        )
+        assert inv.status_code == 200, inv.text
+
+        accepted = client.post(
+            "/invitations/accept",
+            json={
+                "token": inv.json()["token"],
+                "username": "carol",
+                "password": "password123",
+                "display_name": "Carol",
+            },
+        )
+        assert accepted.status_code == 200, accepted.text
+
+        from app.core.security import create_access_token
+
+        carol_id = accepted.json()["user"]["id"]
+        headers = {
+            "Authorization": f"Bearer {create_access_token({'sub': carol_id, 'username': 'carol'})}"
+        }
+        detail = client.get(f"/teams/{team_id}", headers=headers)
+        assert detail.status_code == 200
+        assert detail.json()["my_role"] == "viewer"
+        assert any(
+            m["username"] == "carol" and m["user_id"] == carol_id
+            for m in detail.json()["members"]
+        )

@@ -1,0 +1,2319 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>智鲸 AI 桌面版 — 把知识库装进你自己的电脑</title>
+<meta name="description" content="智鲸 AI 已升级为可下载安装、本地运行的桌面客户端。本地知识库问答、混合检索、工作流编排与 AI 创作集中在一个窗口，文档与对话记录全部留在本机。" />
+<meta name="theme-color" content="#1A4A7A" />
+<link rel="icon" href="data:image/png;base64,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" />
+<link rel="apple-touch-icon" href="data:image/png;base64,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" />
+<meta property="og:title" content="智鲸 AI 桌面版 — 把知识库装进你自己的电脑" />
+<meta property="og:description" content="可下载安装、本地运行的桌面客户端。文档与对话记录留在本机，检索、工作流、创作在同一个窗口完成。" />
+<meta property="og:type" content="website" />
+
+<style>
+/* ==========================================================================
+   智鲸 AI · 产品介绍页
+   设计基调：留白优先、单色系 + 一个品牌蓝、1px 细线分隔、无渐变装饰。
+   所有颜色 / 字号 / 间距集中在下面的 token 里，改主题只动这一处。
+   ========================================================================== */
+
+:root {
+  /* 品牌色取自 logo 实测主色 #1A4A7A */
+  --brand: #1A4A7A;
+  --brand-deep: #123755;
+  --brand-mid: #2F6395;
+  --brand-soft: #EBF1F7;
+  --brand-line: #D3E0EC;
+
+  --ink: #0B1118;
+  --ink-2: #47525F;
+  --ink-3: #7C8794;
+
+  --bg: #FFFFFF;
+  --bg-2: #F6F8FB;
+  --bg-3: #EEF2F7;
+  --line: #E5E9EF;
+  --line-2: #EFF2F6;
+
+  --ok: #2F7D5B;
+  --warn: #9A6B14;
+
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-full: 999px;
+
+  --shadow-sm: 0 1px 2px rgba(11, 17, 24, .05);
+  --shadow-md: 0 10px 30px rgba(11, 17, 24, .07);
+  --shadow-lg: 0 30px 70px rgba(11, 17, 24, .12);
+
+  --shell: 1160px;
+  --gutter: 24px;
+
+  --fs-h1: clamp(1.85rem, 5.1vw, 3.9rem);
+  --fs-h2: clamp(1.55rem, 3.1vw, 2.4rem);
+  --fs-h3: 1.0625rem;
+  --fs-body: 1rem;
+  --fs-sm: .9375rem;
+  --fs-xs: .8125rem;
+
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+
+  /* logo 内联为 data URI：整页因此不再依赖任何外部文件 */
+  --logo: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAhWUlEQVR42u19eZhU1Zn37z3n3FtbLyy9VINs4mhsolExLojpFllMhonJJEUSyaKOgxrFBYzJZL58RZsvMW6IGyqJRjOaGelJNJNRw04LKAaIE6Otk6CIir3RDd1d1VV17z3n/f641U0h0KC0ynJ/z9PPw/N0VVF939959/c9QIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQ5/UP4nwFGNREIGD+FIBO/zgBMAlJ07q2rIGTNLAiIcPZB9BGCmosefLRdW+BtFY84amX7r86+hcaEBmJBolGhs5OBxHc6mnany3DfGDB72WdH17kuZ3l+IXt0AIm5dcf+bZWXl95EQ4fj5nb+onHzdDIAY9fXaJ0KgEQYUyaTIq+WPFjVJCRAjVHabKSqd2J927/syw6bOGRGfMvehqgtuXFE15YYv7+4jLJaBszjgzvdHg/GzLACIn33pqGF//3+yVefPnumTokYVaoA+L6GXHe8tnf9O87I7/sloZwEp9eOqz//L/1ROmzsDAFA/QwNg1CRVQIQPe/KB+ORrr6w877vjCp7lwTt5iYRETVL5n0fApkXu4PGJUlFa/riwIiFjyPZfWwsA2Pt/Wl+vARASi0VL/Yzfo7p6SXzE9JuUDD9R9YUf3sS5npubt77+H2ioy+VVjEJDne4jUIADO/bSupSs8NcA1KKhzusjQUXe36quZtQBQJ3pV+g18yQa6jzfXEMX+njxyddMIxX9GVnhk9jLsGHdVfh/0AGFhD4hUHned8eJcMl9KlxS42W7N0M7t2Xb335ix6b6zj7TUJ8wAAVE2K/GZ8SnzF2jioZO1D07f2OynTe0NDz41n6EvPshK5ANAAydcOkwOxwdy0KNBsnTSMrzhAp9BkRg7XpEUhln58SmZfeu630vHfA3rknmWQbEJ1/3LbIjC1S4dIjO7HxLe3phum37I6n/+WXbLiK8yv0z92gOx5lAxFVTb1glQkWfA1gY7XRBu88agzU6l3pTGtOhikoyGae7vWPlg9sK7IcA6kyvAMs/+524HFL5z0S4EJDHkxTFJG0QEdhosHYMGExSSuM6OzjddkLz2l+2+c4nfUAPNG+7UFdnKs/+ZgWVDvuJtKOXCWnDy3RtY6N/RenOB5rWLXq7jwjVrzLqAiLs4UTXz9DxaTc+psJFFxk344BkSEgLAMFoB2CTj85NJ8Cvsecubn5t3QN4d30mb3K98kmzv2pFSu4RKhRno8FGA2wYzAYEBkOASIBZCyskvGx6RfPS26YgmRS9MvlgYV1DA6OhgZFYLNNLfpRKbV73+9gxJ73IzCfLSPHfCWWfC2l9K3bsWcNDI0/eknn6+21oaGAkkwIVFSLIJeRRXi2xtcEUjflshbDC01l7BIBYe4bZM76WJwAgEjIspHWMDEWnFZUdMy0aP2V5+rnbOiomXfNlO1r6GyJZxDrnwehd2ppIACRARH3OvbSEyfb8NL1l/UtArcTWBnOQ4QcTEjME6ut11fjpUQw98QckrbnCjkTBBsbNpphNPXuphc3L79v4vveYo9th9NXv0AmXDrNLKl4nqYr8E79XeTCYGYAnQjFbZ7pezKaaZoSKh22SVqiMPVeDSPZjbgxJi7SXfdft2j6u/fmHU4URHw1I3SDviJRNuuo02y7+GVmhKWAGSIB1zhitf2dy2ftaV9+94n1q8OglQt4MVE2dM19GB19vcmkPJNR+fAcDImGM979CWifAGC445fuCK6yQ5XZ3XtKycv4j73ccByqG381JrJp63SyS0Tqy7Dh7OUMyJMAaxnNXwTh3Ny2d/3sgH64ctSEkEzCPRk78W6lbPGKDsCJj2ct6gFD7faNQxMbj/cqP2RWhmKV7dv62aentX+kl3UeXgUomBermMUA8pOayY0Lhwf9PWOHvAABr7ZKyLYDBbm6TNs5CNP/liZaXl6UHKHLYu/o8tDNCAqgzVZOuO40iseUkrcHsOi4I1oFogv5eAJAn7KilM90NXrZ7eltteU+vbD76FGQB0yrPv2a6sKO3SDtabZyMYUALZVsAwXi5zazdB1Ot7Y/uFkIeWORASCQEWqsJtTD7fH0iIQtewx8hKQjJJGE19hTM/r5ffb0uO++a8Vak6D+kFTnOuBmAWeeF/EFkxABrIqlI2dC51G+8t7dc3NZYn+oLHz+2HHSBk1h58pQYDTvlX4Ww5whlhbSbc4lAJCxFQkI7mWY23i85k/15y5p7t+yqN9Sj0F7tEvxi8X5VBkANuWB2VKfaJVAKES4xO5bf0rWnwJmQnEcDRoZkUqBxHO3l+3xgP6po/DfKispH3CyEukRYIWncXC8R9h+tMWuQkMIKQbuZDji5m5qWz79rt9zBx1qE2IuTGK+56nQRKb5D2JHPsXZhjHYJECSVJGnBONluZvfX2sktbF1598u7iFQvUP8qowai18/AcReEKkeeOEFYshZE48E4loRVxmABZpd17nUAm5moG9psYc97TVvc2L78vvcGMp+/62SPtyomnnGiiMROBps4s1cMEhliNHE2tbFlXefrQL3u33z6nxWvuep0hIvmCiETZNmS3Vx/Kp/BzMIKC+1mHWjzy2x6x093rFv0dj7h1K8p/LgKOYVOIlVNnnMNrNA8aYcHGSe7KxIQQgoVgnEyDhvvv7TWD7Qun7+i8IOGnDGzxCqNX07SulQq61MkLDDYT5wYDZCAcbOO8dzVRHiXjdkGmBYGewThkdEea/0Oce4vfkbs4ARfMenKk4WKfZNIXEhCHk9WyJcVs5+JkTaMdqAzO+c0L1tw594csT3MWsGBQaTop9KOTGHP0XvmbRiAYJIWGTf9W51K1bWuvf/l95vhT6YMua+HN28eg4jLJ8waq0oG3SysSALMYON6ACQYpleVseeCvdw6rd2HTE/HSyo65LOw7BulHTuOtQc2LgPQ4HwvI/X+PYJI+s40e64GzLsw+BNrp4FzqZdyXk8HejIMt7PbVvH2lpfHZvbjfPqCAfpMUnnt1eeocNH1JOhCYUUUGw+sPYChQcwAGZK2bdzMi6y92zO2taLz6Zt3HlCdJJkUaGyk3v+raurcB2S4+HKzuybodejYuD3XNC+7c+GHqcd8MqXcfCoTAConXf91GQr/TNiRUcbN+kkPIsqnMwWpEIEB42aMsMIC4LxQezNe/XjKIAZBkpAgYQEEaKcnS4wlmt1fZ975y/KuxqUd+wxH91DzQOWkq88QVvRGoayvkLRhPAeA8frSrr5oNClL6lzqvuZ3n52Dxkbnw5vPxQYgWTXt+y8LK3wia8cnAUOTsqXJ7LyuafmCu1CTVP06m4cUAXodk4TvPMVPSZRTfMxNJK0rSCiw5+xyfDifLyCSYPY7k/oNgfYRFjEZEDNIKCH9krh2s5uN5yzq2dn6cPeGf2sv8FkMkBC9Nrt04kWDQ+Hyc4UMXSyEvFBYYWG8HBeEY1TojJEVlibT/UDTstuv3L1c++EPS9XkuTfJWOmPjJvxwBCkbGGczCtNS2496WCSauqTI0CdQb2vsprrZ7QBuLJy0uzFwo7Nl6HoKcbN5rVcrwfMDIL8cJwl6nsvMxs3ZwBASOs4aUVuLVL27NiUGxY0v7b2ftTXZ5BYLMuaV59jRW64loUaTczDhGXHSSgYLwfjZn2C7uGdsyFlS+P0vGb/dcP1vmDm8YcW/m5Jo7lZ5r5ja0hIweAXAACtr9KHjWgEPmn4jgohsVi2rLxnVdPm/zlLZ7p/DCKPSPqqnKEHMHz3yUCQrF1jvIwnpBqhIsV3VJ103ob41Ou/gvoZevuahc8xu3cRc4uww3GQgHazTv7Uy33540QC7GXv2bq1IesL5iArobUwADELeTqBkfd3fGidOdiH8ckToPfR1c/QSCQkNi/JNS297f/qnh0zmZAjoQRZtiShfL8A7IFZ+/8+SFb4VTPFxmPjZrVQ9jgZKvnP+AU/eKps4mXHNy+767mmJbd8Qfd0fN542Q3SCtsklcibIt7L50nj5WAMrwPgJ58Olqx1dRyfeEk5CXEeaxegXTIjIutIIUBBKxoLJBbLllULF7P22sCmnZ2edcZzmkjZQlgRJaywJGWJvLPYS4aDYgKIJHuOYc8xyo5caJVU/DE+Zc4cAKJ5xT1/aGpc/zmvp+tK1t5bwo5IIkkAe3sjArHQGLBuXjCFS2ZKOzqIjdbAruIPszFHFgEKtEHl2VdUsPZ2ODvbznzvD7dO7Mk0V3uZzuleNnWP56R/Z5xsIxuT88lgi7yZOHiNQCSMm9VEolRFBt0x7IIfPDN0whUnYGtDtnn5HQ90b3/tdC/TmTTGtAsrovqIkDdVJG0wmVMB8F7Twh/k9NfCDJ1waTGr8PVsPN4V5ub9WkbmSCQAACDDEY+AHeU7d7yDZFJ0Njy6s2X5gqebl9x6TfMfbv1S05JbT3adrpN1tvt64+ZeEbvMxMGfPiIJ1mzcjBZ2ZJpdOmR9xeQ5lwFA94an2puX3nFTrqf1FJ1L3WaM7hAqokhaAoABGy3t8HUABGph+kJJfOB2boW6OmNFB/2LCsVGsvYMsHv0Q2y6MUCTQYdYkYxF7vELeorGnj2zJxbLpH95y6uoSSqcUUEoT0hcXAs0NJieLRvaU288vz5lVz0Ui0beZdB4aUVKWXu60FYehFkQrD0thIzKUOSLRWPOGBeuGre25+1NqczWP3WlNq9bZo8c9zhp3gHCCKHscpAQwgoPi406vSz18E+f9juoEhKNjR8s9Hthvldee/U5KlK8iLXXa/t7NYAhqYR2M0+lt7z4IkbXit4OnyODAIDfMjX2LCKprkq98fxDuLgWWLjQYGuDQUNDvhaeFKipldi40E298cKmyPCxvyYRGiHsyEkw2vhV0f02TByAo2gY2hgZin6apPX12MjT3ktvefEVAMhs2dSdevOF51KlmYdiMv4Ss7HBulRFSibFRp1+RuzYU19I//6Rjg8a9w8+/Wsj7NL4s0KowX6Ke7fTb0hagrT+z+43nn/pYAhAh3TDRPUMq2rE6NeNdme3LF/w9Pu7WfbVkFI5de73pR39GbHx/aSDJUFhkkdaEkTQTvZxJ9v+g46GX7yLxGKJxQkD8tOvVTWzyowVPVPYkenseYPYTS/zdnb8of2lE5qBfVYhCeNnKWxa5A4+51sjwyXDnxEqPI69rAGJPQd4iMhL75jcunrhin6ey+HrA6BmnkRjvWNY30nSmu9/18S+HceGOs/PLi6WLUvvuMVL77iImV0SEgftHBb4BqxdZs8xKhSbGY5VbKqcesNs1N8iQMRIJkV1Imk3NSza3rJ8wdNNz9x8ZfPS277BglcrnfP20aRCfumbGJsWuZW13z0zXDp8pbTC49jL6fcJn3uzYzDaGEnvAPAHSA65mbQBmZ5IEsb/t4yXnb+Fjb6rZdkdtx1QlWvWLAuLFrkVtd+9UMUG14NZDvjyC2ZNQkmSCtrNvATXua3pvT/8pjfvP37Wg9b2/31Pbq1odAtOJwEMJOcRGsdRQSIMwHgrPqX2arJCNwtphXZLh/c9EQGwYRKSjJdryrZtOTE/lPOhM4F0ODROVky69kvKjjxpcl2jm1fd9zYwb/8ZtkTSRn2dE58y5x4VHXS1cTMeQGqgJzzAMKRsCRCMm3mFtPcrL9Pzm9a19795IJ/gd1R/6ksQ8nvSjp5itAMYs2f9nwjsuTtBIirssG1yPS82Lbn1rN4O4yNRA+zePTvtxtUAhZqW3HL2ATWSJhIS1dVc9lzrqXZkyMa8GaCPaNLHAMSkLEl+P0LaGO959rxVDN5g4L6d27atXcVSnqXKwiiuqiA21UKFPgchpgkVHutXOZ189PJ+n4XAbHLGST8rQ0XThRVWXs/OXzYvm3/pgdb9cegVgw40O/gqA0wme8XFMla+JT5lzo+al9X9GONnWdi0yN1PVpG219T+Oa7P+LO0oyfvVa0OjG8g/N4DxzDBQIiYtIqmUJimsPZgvJxjjT5+J0Aeg0OC5FBSNkhIsPbAnl+c2ut3YzbCCpGX69kAoZpJ2YqNATP/CUBvIejISwShsGqYqBctDQ++xU56looNuany/GumY9Mid78j1Yl6gYYGD8b5CRERiD7aEbV8bQHMzG5OGzfjsXENSWULFaoQyh4mVWhoXp37v9eu6c1A9tfiCy/zCyHk8QQC65yBcf8IYNck8ZFLgLyjVJNUTcvv/Lnu6aqXkUFPDjrz2yfvNlK9r/clWTQvu6vey3X/WthRC8zux+LA+uVn5U/HMLPx+n7yr/B/T/01tUCTFZIml1qfSbU0kFBnMhuw1u+09LT8Ja/pzJFPAABomKeRTAq0N17MxnstWj5qefmEb49FQ53X7+qaOjCSSRHKbv8nL9u9RIRiFhgDUED6oL4WFfwcaIt3/vw7qasjsarTyQrF4DdLPY/1ft/CwVZExWE0U88A0LTpv3tM+7YvEoOsIaMbKs+9bAzq6/W+NQEx6up4a8Oj2ea25f/g9XTeR8ryC0i9RZxDc4RcCzsidTb1i6ZV928iy7oU3Nv86j07EPYfh+V6l3zWq2LilSdbg8rWMKjL2bnl/O1r/+2vhb2G+xrI9Dt5r/2SDEV+Iu1INRsD9hxT6MwdCsInFZLG6fmrMfo0me0Zgljp66SsqPHcTu20ndC68qGWgw0BDzMNUODdJxKyde39L+e6ttUCKLJLR6+rnHjJmQU+Ae1DgxASCdm68q6nmv6y+nQvveNK4+VeJmULUiHhl3Q/YY3AbEhIYuOkOZue2bLsjrQXCn2L7HAUJJjZW9W68qEWJFkMxCaWw3PtW2MjI7FY9jz7w/eiQ8c+LSLFX5WRQXMiw0/5W3r1LS+DmQCIfNFoL+9NSKxf6qTeXL8xVZp5KKoqXwHzCGGFRpCQBKO1X3sn+rilDxJMUknd0/WdltX3Lq08+ZsxWVL6cxJyMABit+dfU2+++FpvwezoMwF7Mwef/nqlGnnsEzJcXOOlO25vWnLbDwDo/k3C7gUkAIhPmftVUtYPpRU91ejc3jNyH+HJBwkIZQs303l1y7L59wGgysnXX6yipQ+z9tho9x1q23Fi06ZFPQeT/j38NcD7TnN69eLu7r+teSw68tQhKlx6XezYM2uK4uP+mFpzh28nk/vQBvkTVJ1I2m3ltZRaefMrKTQ/EomNTgkpJ5AK2TCe/shJwKxJSElCksl0zW5efud942c9aMU6PeWWDX+MiIYKaZF2eu5qXnvvMtQk1UCc/sOfAIUqvbFRp7xtq2KD/u4yGSr6NCzrW0WjPptJvXnB+t61Nmis3y0LWjR++pDiMRPl20sWZPoe6EknUXrVv6+JxquXQ6qzpR2Ns3Y/QhKwJ1RIsdFpk+n+ZvOKBY8cd8Hs0KtP/MixTpl+hRUp+bafTXQ7vUznJT1vb0pjay2ABg4IsMsUEBoaUHnazBOEFf4ea48hRFiGYhfEjj3zvNjIUxvTT3/v3d69O/5PErHhXUNUtPjLRcefO7P42HPidvEx2zMvPtMJAOm3N21D6eB6FSo5UdrRT/ldRgNIAn/ql4QVkcbNvZLr2f7lttULl2PWg1bHpzwvro8tk9FBTzAQFlZIcC59f+vqe3/jE/lqM9DLog9v+AuoTGzkSceJUNFlvu/GYO0ZYYXHkLAujo05I5x6w3oO2Oqv30IDZ997tSv91sZNsdFnaaHsH1glQ28vGnv256KjTx9qlY/KdG18clvqjeefiIw47UQVLv70AGiC3g1eEFZYstGk3cw9uY4/f7Pj+Se2oCap0N4NPFqni46fdLcMF53LRrPRbrfYueNb3dv+1I3G6gE7/UcOAcaNE2hs5OiY00ZJq+jSwp4++P2BUoZLPhcdMeQzKVH6JDpmGqABvVu001s+/2Zq87pfxI49m1W4+FIZjk2TVtHM2JgzzraHjsptX/vzn0dHnnaqDMWOzefuqWDcrL9ooXfBkz/DIKTw5xtB7GSWcqbn4uYVdz6Y2bY5h2RSoKcReGahLj9v9lQrUjLfaMeVdljpXPetTWsW/tdAn/7DMw+wN+Q7YsiEuwqWX3Fhhc3k0o6KDb6wYuSJFwN1prfnHvA7eZBMiualt93kpNu+xG4uLZRVbIVLvhCtPO6J+OTrHshu/+vDxs00kbQF2BgSFpEVkiDZK3x/gsmfZTS9bVukLCGssBRWWMJ4XTqXXuxmuqe8t+TWaU0Nd6/tW7xdN49RXc2lEy8arMKxB0EwQiqpc6m3vHTX7UgmRX7+b0ChjggC1OXPvKtb2HAnSVmK3fM5BIKAMUYqceqe76/zzcL4B63WFZf/rnLydV+ToaLfsnEBGKWKyqZHlPVpne16XsWGXkjSgpvtekaqcBhE44nEYBAJkvnhYGP8HL72erT23gGbTezpFU42tXxH7xLNvk0l+Vp+zTyFujovMvWGhdKOjtZOxhHKtrWTu779+Ye7MXyxzBMrIMBeS8bJpGipq2uNT7txo5BqEruO8Stuu2s8Zu+v+1TXmy53MetBq2XR5U9XTr5mrooOuYddRxsn5Qm7aDQMyDiZNhEurpIqNCbX8c4EGSmNslDDhc4NEcoaBADaeF2K7O0Mb3vzqoXbAHh7zv6TRl1eS+XzFRWTr71OhYu/rt1MTtqRkM50Pta68q6nDrbp4yggAJCfwjHGuI8o0PnsL2nYbTe38bJsct4L/dbRF13uoiapWpbX3Vs17XvfEKHYBHYdzV6WSVmj2Og0u1ktwyXjQoMq5zUtnT8HQPN+u5paXyU07GV+Py/8+PmzLxCh4tuN57hCWLbJ9byd7tp5LZAUqJ/xkW07O3II0FCnkUyK1vrGxfERao4MxU5lN5fvAGIGSWLtpqCk36vnL17o9yO19u4TwIQ+pxIACRkD2LCXZZCaMfSES5PtJ3f3oLWaUDEuL6j6wlXvvM/Tmxd+2bmzThOh4id6KzvMBjqXuqRr/UMdfrYTOiDAgdXPCY31DlVe+c8s1VoSMsR+Xl/4XiG5wjmAYk+Db2tlZvtaY4XSJGQMbHiXt0+CjWYhreEyHhuH+ofX+4Kq0x+w19Erm3jZ8Vbx0N+RUCXGuDlpRUI6teOHLavuXYmapEL9we4WOBqigEJnLpGQTavu38TZ9EXMbEgqCcBjMEAo0lYufyvavH6Ofx0DQM4dtJMgemhvmoKZISSY3OH4MFs/6mfo8gnfHmsXly0RMnSMMW5O2rGQl+n696YVd968nzpGQAD0Wy5eLJtW3v2kyXb+A2u9XVgRC8yukLYgRMb5Qujvb/c1uW2nQszG5n5eRwT3w6x8iU+8pFqVDltGVni08bL+yc90PhfKtV2KZFKgYZ7+OB7XkUeA3l7AxGLZvPLeZ73uHWd62dSTILKEHZXSsr8DgPptpkzUC4BJhEo/Q8oqAWuzR7KHiFh7Bi69dYDTOdS357/26nOoOL5CqPAY4+Zy0o6GvGzqpVTH3/5xa8OjWd93+HhuXTkyCdBHgoRsXXv/m81Lbv1HnemZ5GU6nwFhFKoTVt+9SP20oBkpZwlh+Vcv7LmCHWy8xlbZ2Agw9b+dKymQTJIf6l1zkRUdtExIK268rCOtSEjnUq/ojpYvdG94qt0fJ//4Ltg4Cm78Sgokd616GzWqJrx1a0N2fyq64vyrzlahwWsAQ3seFPaEFVE6vWNW0/I7f96vvS74XXzq3J9IO/ZDZg02xo/1c+mNXnvzP7RteLT5YIY8AwIcSPNIdXX/S6jzAiituXBQLHLi82TZJ7Ln7t4UwuwJO6K8bPe65uwfa1Fbu48l1LvW4PnTvsPul1bsC8bLajAbEYpaOtv9XKr9r//YveGp9k9C+DhK7/zbeydN70kdPz4aHzrpdzJcNJl718H1wXgkw8p4ufdMT8c5/i1fe6js942qz/malOG7hBWq1G7WISJFVkiYbOpX8tU1V7z77vpM4Z7ggACfyE3pCaB+hq46Z9ZILhnyuLQiE/0kEnbtKAS0UBFl3Mzbbrbji22rHvzz+07tblvMS2u+MzoSqfyptCLfABsY4+WEtEP+arrs95uXzr99f5u8AwIczIne7yr7elF4L0F8ynVfJRVZIK3QcFOYQQQK9u/3rMqmm7+zY80j7xQIf/fewmPOisSrJ1wlZPj7wg6X+VPJgLAiSjuZv5ls9xUtq+5deahcmUNHhOALbirZ82/rncdvpL1dLlE+dc4EJdT3hQp/EWCw8TwwEcAoWGO/3XjOzc3Lbl8AwPRdarG6YH09oOLnX3sR2ZEbpR0dZ7wcmE1OSCsEAMbNPpLeuWVu1/r6jo8ryXOkE0BETpgcLyoZbto2PNq8n0smdkPZubOqlB2bAmXNFEJOJmUL4zkOARJCSpIKBIJxcy1svMey7a137dj4yDtILJbjB+8QmxZd3pf8KTkrMSRWMuorkOpKocKn+urezRHJkFA2jNPzupfr+WHryruf3NttnwEB8OF3CFWNvzziRnGesOxjmGl526p73gAAHHdcqKz0zCGmtEhItsOWChVrnRtB0v4MSJxLQp4tQ5FikD+eDXDfqLbRbgex2WSM+6SXaXlq+5rHm94/WQRAVJx/1ZlSxRIQIiGtyDFsNIx2HRLCFioE7WTa2XMW6G0bF7Q1NqQO1VvSjggnsKJm9lnCUv8MEmGQ+W1n4wvrY8OPjYvIoE8JFZoMoU4hQccJK1Lk303gAcxpY7wOkGiDMe+wMS+D3T9qJ7tp+5pFTdhzlUe0/LgzTlGR6AWQ1nQicapQofwtn+ySkBYJC8bLthnP+YXT1Xpfx/pfbTsUT/0RRoBdJzN+/vXfJmVfCcIoMG8Ee8t0NrfR6d7xnqszGUXGEcpmkcqZdu042PyHHPZ6sWeiCOXlcWVZY1nIk4jkWSAaT0KNFsr27+Q1ngFJIfyMIIx2X4HWjzmp9n9rf/7h9w6XuxHpiMn2Faxfq5x83d8LFboSJKZKK2wZz4Ex7mZi2gbjbTXGtEIgTSSZAMUwITZcSkJWkRAVMCiDEMNIyAip/D5mY/zJXCEAkoB2YYz3FmtvOXGuvmnZPauAfGHoMLpFnY64mN5v9GAAGHLG7JLQoPAkJjGdhJhEQoyRdgwQ0rf5nO/d6108ztjVxMu8a/0PG//6GmPaQHgFzGuMcRrQsv3FlpcfS++eTJqnDwfBH9mJoILkTuHfWllz+ShD4RNI0aektEdBe+WQajhIlIBgwV/HbGBMlrXXSlI0ganFaOdVAr+Zad2+ufMvv96xR2OHH3kc5fchH6r+QWKxzLdeD9REj1/W9beSHPYH6GhKBfuLJxP5hBAAVIzjvdvqfMt277r3inEcnPIAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECHCI4P8DD2dT6JNeypoAAAAASUVORK5CYII=");
+}
+
+* { box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: var(--fs-body);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4 { margin: 0; line-height: 1.2; letter-spacing: -.022em; font-weight: 600; }
+p { margin: 0; }
+ul, ol { margin: 0; padding: 0; list-style: none; }
+a { color: inherit; text-decoration: none; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+img { max-width: 100%; display: block; }
+code { font-family: var(--font-mono); }
+
+:focus-visible {
+  outline: 2px solid var(--brand-mid);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.shell {
+  width: 100%;
+  max-width: var(--shell);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+/* 锚点跳转要给吸顶导航让位 */
+section[id] { scroll-margin-top: 86px; }
+
+/* ── 通用排版件 ───────────────────────────────────────────── */
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--brand);
+}
+
+.section-head {
+  max-width: 720px;
+  margin-bottom: clamp(32px, 4.5vw, 56px);
+}
+
+.section-head h2 {
+  font-size: var(--fs-h2);
+  margin-top: 14px;
+}
+
+.section-head p {
+  margin-top: 16px;
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  color: var(--ink-2);
+}
+
+.section-head.is-center {
+  margin-inline: auto;
+  text-align: center;
+}
+
+.hairline {
+  height: 1px;
+  background: var(--line);
+  border: 0;
+  margin: 0;
+}
+
+/* ── 按钮 ─────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 12px 22px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+  white-space: nowrap;
+  transition: background-color .18s ease, border-color .18s ease,
+              color .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+
+.btn-primary {
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(26, 74, 122, .3), 0 8px 20px -10px rgba(26, 74, 122, .55);
+}
+
+.btn-primary:hover { background: var(--brand-deep); transform: translateY(-1px); }
+
+.btn-ghost {
+  background: #fff;
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.btn-ghost:hover { border-color: #C9D2DC; background: var(--bg-2); }
+
+/* GitHub 按钮：深色底，和主按钮同高同圆角，只在「重量」上低一档 */
+.btn-dark {
+  background: #0F1622;
+  color: #fff;
+  border-color: #0F1622;
+  box-shadow: 0 1px 2px rgba(11, 17, 24, .28), 0 8px 20px -12px rgba(11, 17, 24, .6);
+}
+
+.btn-dark:hover { background: #1B2534; border-color: #1B2534; transform: translateY(-1px); }
+
+.btn-dark svg { flex-shrink: 0; }
+
+.btn-quiet {
+  color: var(--ink-2);
+  padding: 9px 12px;
+}
+
+.btn-quiet:hover { color: var(--ink); background: var(--bg-2); border-radius: var(--r-sm); }
+
+.btn-sm { padding: 8px 15px; font-size: var(--fs-xs); }
+.btn-block { width: 100%; }
+
+/* ==========================================================================
+   导航
+   ========================================================================== */
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  background: rgba(255, 255, 255, .72);
+  border-bottom: 1px solid transparent;
+  transition: border-color .25s ease, background-color .25s ease, backdrop-filter .25s ease;
+}
+
+.nav.is-stuck {
+  background: rgba(255, 255, 255, .86);
+  border-bottom-color: var(--line);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  backdrop-filter: saturate(180%) blur(14px);
+}
+
+.nav-inner {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  height: 68px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* 品牌标志：用 CSS 背景承载内联的 logo，尺寸按场景覆盖 */
+.logo {
+  display: block;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  background-image: var(--logo);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+
+.footer-brand .logo { width: 28px; height: 28px; }
+
+.brand-name {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+
+.brand-tag {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  color: var(--brand);
+  background: var(--brand-soft);
+  border: 1px solid var(--brand-line);
+  border-radius: var(--r-full);
+  padding: 1px 6px;
+  transform: translateY(-1px);
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: auto;
+}
+
+.nav-links a {
+  padding: 7px 11px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  border-radius: var(--r-sm);
+  transition: color .15s ease, background-color .15s ease;
+}
+
+.nav-links a:hover { color: var(--ink); background: var(--bg-2); }
+
+.nav-cta { display: flex; align-items: center; gap: 8px; }
+
+.nav-toggle {
+  display: none;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+}
+
+.nav-toggle:hover { background: var(--bg-2); }
+
+/* 移动端抽屉 */
+.nav-drawer {
+  display: none;
+  border-top: 1px solid var(--line);
+  background: #fff;
+  padding: 10px var(--gutter) 18px;
+}
+
+.nav-drawer[data-open="true"] { display: block; }
+
+.nav-drawer a {
+  display: block;
+  padding: 12px 4px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--line-2);
+}
+
+.nav-drawer a:last-of-type { border-bottom: 0; }
+
+.nav-drawer .btn { margin-top: 10px; }
+
+/* ==========================================================================
+   Hero
+   ========================================================================== */
+.hero {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(48px, 7vw, 84px) 0 clamp(40px, 5vw, 64px);
+}
+
+/* 一层极淡的品牌色光晕 + 点阵，替代渐变装饰 */
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: -30% 0 auto 0;
+  height: 760px;
+  background:
+    radial-gradient(58% 46% at 50% 8%, rgba(26, 74, 122, .10), transparent 70%),
+    radial-gradient(40% 34% at 78% 0%, rgba(47, 99, 149, .08), transparent 72%);
+  pointer-events: none;
+}
+
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle at 1px 1px, rgba(11, 17, 24, .055) 1px, transparent 0);
+  background-size: 26px 26px;
+  -webkit-mask-image: radial-gradient(70% 60% at 50% 0%, #000 20%, transparent 78%);
+  mask-image: radial-gradient(70% 60% at 50% 0%, #000 20%, transparent 78%);
+  pointer-events: none;
+}
+
+.hero-inner {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 13px 5px 6px;
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  box-shadow: var(--shadow-sm);
+}
+
+.badge b {
+  font-weight: 600;
+  font-size: 11px;
+  color: #fff;
+  background: var(--brand);
+  border-radius: var(--r-full);
+  padding: 2px 8px;
+  letter-spacing: .02em;
+}
+
+.hero h1 {
+  margin: 22px auto 0;
+  /* 用 em 而不是 ch：ch 在中文字体里只有半字宽，
+     17ch 会把「现在装在你自己的电脑上」挤成两行、拆开「电脑」。 */
+  max-width: 14em;
+  font-size: var(--fs-h1);
+  letter-spacing: -.035em;
+  line-height: 1.08;
+  text-wrap: balance;
+}
+
+.hero h1 em {
+  font-style: normal;
+  color: var(--brand);
+}
+
+.hero-lead {
+  margin: 22px auto 0;
+  max-width: 62ch;
+  font-size: clamp(1rem, 1.35vw, 1.125rem);
+  line-height: 1.78;
+  color: var(--ink-2);
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 30px;
+  flex-wrap: wrap;
+}
+
+.hero-meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 20px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+.hero-meta span { display: inline-flex; align-items: center; gap: 6px; }
+
+.dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #C6CFD9;
+}
+
+/* ── 应用窗口 Mockup ──────────────────────────────────────── */
+/* 真实界面截图：白色卡片 + 细边 + 柔和投影，和页面其它卡片同一套语言 */
+.shot {
+  position: relative;
+  margin: clamp(34px, 5vw, 56px) auto 0;
+  max-width: 1080px;
+}
+
+.shot::before {
+  /* 截图后面一圈很淡的品牌色光晕，避免白底页面里「飘」着 */
+  content: "";
+  position: absolute;
+  /* 横向不外扩：负 inset 会让光晕顶出视口，手机上直接产生横向滚动 */
+  inset: -6% 0 -14%;
+  background: radial-gradient(closest-side, rgba(26, 74, 122, .16), rgba(26, 74, 122, 0) 72%);
+  filter: blur(10px);
+  z-index: -1;
+  pointer-events: none;
+}
+
+.shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(11, 17, 24, .14), 0 2px 6px rgba(11, 17, 24, .06);
+}
+
+.shot-sub { max-width: 1000px; margin-top: clamp(26px, 4vw, 40px); }
+
+.shot figcaption {
+  margin-top: 12px;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.stats {
+  padding: clamp(28px, 4vw, 40px) 0;
+  border-block: 1px solid var(--line);
+  background: var(--bg-2);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 24px;
+}
+
+.stat-num {
+  font-size: clamp(1.5rem, 2.4vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -.03em;
+  color: var(--ink);
+  line-height: 1.1;
+}
+
+.stat-num small { font-size: .5em; font-weight: 500; color: var(--ink-3); margin-left: 3px; letter-spacing: 0; }
+
+.stat-label {
+  margin-top: 7px;
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+
+/* ==========================================================================
+   为什么桌面版
+   ========================================================================== */
+.section { padding: clamp(64px, 8.5vw, 108px) 0; }
+
+.why-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+
+.why-card {
+  background: #fff;
+  padding: clamp(22px, 3vw, 34px);
+}
+
+.why-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  color: var(--brand);
+  background: var(--brand-soft);
+  border: 1px solid var(--brand-line);
+}
+
+.why-card h3 {
+  margin-top: 16px;
+  font-size: var(--fs-h3);
+}
+
+.why-card p {
+  margin-top: 9px;
+  font-size: var(--fs-sm);
+  line-height: 1.75;
+  color: var(--ink-2);
+}
+
+/* 数据边界提示 */
+.callout {
+  display: flex;
+  gap: 14px;
+  margin-top: 22px;
+  padding: 18px 20px;
+  border-radius: var(--r-md);
+  background: var(--brand-soft);
+  border: 1px solid var(--brand-line);
+}
+
+.callout svg { flex-shrink: 0; color: var(--brand); margin-top: 2px; }
+
+.callout p {
+  font-size: var(--fs-sm);
+  line-height: 1.78;
+  color: var(--ink-2);
+}
+
+.callout strong { color: var(--brand-deep); }
+
+/* ==========================================================================
+   功能
+   ========================================================================== */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.card {
+  position: relative;
+  padding: 24px 22px 26px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: #fff;
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.card:hover {
+  border-color: #CFD9E4;
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: var(--brand);
+  background: var(--brand-soft);
+  border: 1px solid var(--brand-line);
+}
+
+.card h3 { margin-top: 16px; font-size: var(--fs-h3); }
+
+.card p {
+  margin-top: 8px;
+  font-size: var(--fs-sm);
+  line-height: 1.75;
+  color: var(--ink-2);
+}
+
+.card .tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.tags span {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-full);
+  padding: 1px 8px;
+}
+
+/* ==========================================================================
+   应用场景
+   ========================================================================== */
+.scenes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.scene {
+  display: flex;
+  flex-direction: column;
+  padding: 26px 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: #fff;
+}
+
+.scene-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  align-self: flex-start;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--brand);
+  background: var(--brand-soft);
+  border: 1px solid var(--brand-line);
+  border-radius: var(--r-full);
+  padding: 2px 10px;
+}
+
+.scene h3 { margin-top: 14px; font-size: var(--fs-h3); }
+
+.scene p {
+  margin-top: 8px;
+  font-size: var(--fs-sm);
+  line-height: 1.75;
+  color: var(--ink-2);
+}
+
+.qa {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--line);
+  display: grid;
+  gap: 9px;
+}
+
+.qa-row {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 10px;
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+}
+
+.qa-row b {
+  font-weight: 500;
+  color: var(--ink-3);
+  letter-spacing: .02em;
+}
+
+.qa-row span { color: var(--ink-2); }
+
+.qa-row.answer span { color: var(--ink); }
+
+/* ==========================================================================
+   对比表
+   ========================================================================== */
+.compare-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+.compare {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  font-size: var(--fs-sm);
+}
+
+.compare th,
+.compare td {
+  padding: 15px 18px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.compare thead th {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  background: var(--bg-2);
+  border-bottom-color: var(--line);
+}
+
+.compare thead th.hl {
+  color: var(--brand);
+  background: var(--brand-soft);
+  border-bottom-color: var(--brand-line);
+}
+
+.compare tbody tr:last-child th,
+.compare tbody tr:last-child td { border-bottom: 0; }
+
+.compare tbody th {
+  width: 156px;
+  font-weight: 500;
+  color: var(--ink);
+  background: #FCFDFE;
+}
+
+.compare td { color: var(--ink-2); }
+
+.compare td.hl { color: var(--ink); background: rgba(235, 241, 247, .5); }
+
+.compare td.hl::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--brand);
+  vertical-align: 3px;
+}
+
+/* ==========================================================================
+   下载
+   ========================================================================== */
+.download {
+  padding: clamp(64px, 8.5vw, 104px) 0;
+  background: var(--bg-2);
+  border-block: 1px solid var(--line);
+}
+
+.platforms {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.platform {
+  display: flex;
+  flex-direction: column;
+  padding: 24px 22px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+
+.platform:hover { border-color: #CFD9E4; box-shadow: var(--shadow-md); }
+
+.platform.is-primary { border-color: var(--brand-line); box-shadow: 0 0 0 1px var(--brand-line); }
+
+.platform-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.platform-top svg { color: var(--ink); flex-shrink: 0; }
+
+.platform-top h3 { font-size: var(--fs-h3); }
+
+.platform-top .hint-pill {
+  margin-left: auto;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--brand);
+  background: var(--brand-soft);
+  border: 1px solid var(--brand-line);
+  border-radius: var(--r-full);
+  padding: 1px 7px;
+}
+
+.platform-meta {
+  margin: 14px 0 18px;
+  display: grid;
+  gap: 5px;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+.platform-meta div { display: flex; gap: 8px; }
+
+.platform-meta dt { width: 46px; flex-shrink: 0; color: #A6B0BB; }
+.platform-meta dd { margin: 0; color: var(--ink-2); }
+
+.platform .btn { margin-top: auto; }
+
+/* 平台说明：macOS / Linux 没有原生安装包这件事要讲清楚，不能靠猜 */
+.dl-note {
+  margin-top: 18px;
+  font-size: var(--fs-xs);
+  line-height: 1.8;
+  color: var(--ink-3);
+}
+
+.dl-note code {
+  font-size: .92em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-3);
+  color: var(--brand-deep);
+}
+
+/* 分享二维码：横向卡片，窄屏改为上下堆叠 */
+.share-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-top: 22px;
+  padding: 18px 20px;
+  border-radius: var(--r-md);
+  background: #fff;
+  border: 1px solid var(--line);
+}
+
+.share-qr {
+  width: 108px;
+  height: 108px;
+  flex-shrink: 0;
+  padding: 6px;
+  border-radius: var(--r-sm);
+  background: #fff;
+  border: 1px solid var(--line-2);
+  /* 二维码必须保持像素锐利，缩放时不要插值 */
+  image-rendering: pixelated;
+}
+
+.share-body { min-width: 0; }
+
+.share-body h3 { font-size: var(--fs-h3); }
+
+.share-body p {
+  margin-top: 7px;
+  font-size: var(--fs-xs);
+  line-height: 1.8;
+  color: var(--ink-2);
+}
+
+.share-body code {
+  font-size: .92em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-3);
+  color: var(--brand-deep);
+}
+
+@media (max-width: 560px) {
+  .share-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+}
+
+/* 安装步骤 */
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 34px;
+  counter-reset: step;
+}
+
+.step {
+  position: relative;
+  padding: 22px 20px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.step::before {
+  counter-increment: step;
+  content: counter(step);
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--brand);
+  border-radius: 50%;
+}
+
+.step h4 { font-size: var(--fs-sm); font-weight: 600; }
+
+.step p {
+  margin-top: 6px;
+  font-size: var(--fs-xs);
+  line-height: 1.75;
+  color: var(--ink-2);
+}
+
+/* 命令行块 */
+.cmd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 11px 12px;
+  background: #0E1620;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.cmd code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-size: 12px;
+  color: #D5DEE8;
+}
+
+.cmd code::-webkit-scrollbar { height: 0; }
+
+.cmd button {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #93A2B2;
+  border: 1px solid #24313F;
+  border-radius: 5px;
+  padding: 3px 8px;
+  transition: color .15s ease, border-color .15s ease, background-color .15s ease;
+}
+
+.cmd button:hover { color: #E6EDF5; border-color: #3A4A5C; background: #17212C; }
+
+.cmd button.done { color: #7FC79B; border-color: #2E4A3A; }
+
+/* ==========================================================================
+   系统要求
+   ========================================================================== */
+.req-grid {
+  display: grid;
+  grid-template-columns: 1.15fr .85fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.req-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.req-table th,
+.req-table td {
+  padding: 13px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--line-2);
+  vertical-align: top;
+}
+
+.req-table thead th {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  border-bottom-color: var(--line);
+}
+
+.req-table tbody th { font-weight: 500; color: var(--ink); white-space: nowrap; }
+.req-table td { color: var(--ink-2); }
+.req-table tbody tr:last-child th,
+.req-table tbody tr:last-child td { border-bottom: 0; }
+
+.aside-card {
+  padding: 22px;
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+}
+
+.aside-card h3 { font-size: var(--fs-h3); }
+
+.aside-card p {
+  margin-top: 10px;
+  font-size: var(--fs-sm);
+  line-height: 1.78;
+  color: var(--ink-2);
+}
+
+.check-list { margin-top: 16px; display: grid; gap: 10px; }
+
+.check-list li {
+  display: flex;
+  gap: 9px;
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+
+.check-list svg { flex-shrink: 0; color: var(--ok); margin-top: 2px; }
+
+/* ==========================================================================
+   FAQ
+   ========================================================================== */
+.faq-list { border-top: 1px solid var(--line); }
+
+.faq-item { border-bottom: 1px solid var(--line); }
+
+.faq-item summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 21px 4px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--ink);
+  transition: color .15s ease;
+}
+
+.faq-item summary::-webkit-details-marker { display: none; }
+
+.faq-item summary:hover { color: var(--brand); }
+
+.faq-q { flex: 1; }
+
+.faq-sign {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--ink-3);
+}
+
+.faq-sign::before,
+.faq-sign::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 12px;
+  height: 1.5px;
+  background: currentColor;
+  border-radius: 2px;
+  transform: translate(-50%, -50%);
+  transition: transform .22s ease, opacity .22s ease;
+}
+
+.faq-sign::after { transform: translate(-50%, -50%) rotate(90deg); }
+
+.faq-item[open] .faq-sign::after { transform: translate(-50%, -50%) rotate(0deg); opacity: 0; }
+
+.faq-a {
+  padding: 0 4px 22px;
+  /* 中文行宽用 em 更直观：40em ≈ 一行 40 字，再宽就不好读了 */
+  max-width: 40em;
+  font-size: var(--fs-sm);
+  line-height: 1.82;
+  color: var(--ink-2);
+}
+
+.faq-a p + p { margin-top: 10px; }
+
+.faq-a code {
+  font-size: .9em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-3);
+  color: var(--brand-deep);
+}
+
+/* ==========================================================================
+   收尾 CTA
+   ========================================================================== */
+.final {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(66px, 9vw, 112px) 0;
+  background: #0C1520;
+  color: #E8EEF4;
+}
+
+.final::before {
+  content: "";
+  position: absolute;
+  inset: auto 0 -40% 0;
+  height: 520px;
+  background: radial-gradient(46% 60% at 50% 100%, rgba(47, 99, 149, .38), transparent 72%);
+  pointer-events: none;
+}
+
+.final-inner {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+}
+
+.final h2 {
+  font-size: var(--fs-h2);
+  letter-spacing: -.03em;
+  color: #fff;
+  max-width: 20ch;
+  margin-inline: auto;
+}
+
+.final p {
+  margin: 18px auto 0;
+  max-width: 56ch;
+  font-size: 1rem;
+  line-height: 1.78;
+  color: #A9B8C7;
+}
+
+.final .btn-primary {
+  background: #fff;
+  color: #0C1520;
+  box-shadow: 0 10px 30px -12px rgba(0, 0, 0, .8);
+}
+
+.final .btn-primary:hover { background: #EEF3F8; }
+
+.final .btn-ghost {
+  background: transparent;
+  color: #D7E1EB;
+  border-color: #2A3746;
+}
+
+.final .btn-ghost:hover { background: #16212D; border-color: #3A4A5C; }
+
+.final-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 30px;
+  flex-wrap: wrap;
+}
+
+.final-meta {
+  margin-top: 18px;
+  font-size: var(--fs-xs);
+  color: #6F8091;
+}
+
+/* ==========================================================================
+   Footer
+   ========================================================================== */
+.footer {
+  padding: 52px 0 30px;
+  background: #fff;
+  border-top: 1px solid var(--line);
+}
+
+.footer-top {
+  display: grid;
+  grid-template-columns: 1.6fr repeat(3, minmax(0, 1fr));
+  gap: 32px;
+}
+
+.footer-brand p {
+  margin-top: 14px;
+  max-width: 34ch;
+  font-size: var(--fs-xs);
+  line-height: 1.8;
+  color: var(--ink-3);
+}
+
+.footer-col h4 {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--ink);
+  text-transform: uppercase;
+}
+
+.footer-col ul { margin-top: 12px; display: grid; gap: 9px; }
+
+.footer-col a,
+.footer-col span {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  transition: color .15s ease;
+}
+
+.footer-col a:hover { color: var(--brand); }
+
+.footer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 44px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line-2);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  flex-wrap: wrap;
+}
+
+/* ==========================================================================
+   进入动效（尊重 prefers-reduced-motion）
+   ========================================================================== */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity .6s cubic-bezier(.22, .61, .36, 1),
+              transform .6s cubic-bezier(.22, .61, .36, 1);
+  will-change: opacity, transform;
+}
+
+.reveal.is-in { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .reveal { opacity: 1; transform: none; transition: none; }
+  * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
+
+/* ==========================================================================
+   响应式
+   ========================================================================== */
+@media (max-width: 1000px) {
+  .feature-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 26px; }
+  .req-grid { grid-template-columns: minmax(0, 1fr); }
+  .footer-top { grid-template-columns: 1fr 1fr; row-gap: 30px; }
+}
+
+@media (max-width: 900px) {
+  .nav-links { display: none; }
+  .nav-toggle { display: inline-flex; }
+  .platforms { grid-template-columns: minmax(0, 1fr); }
+  .steps { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 760px) {
+  .why-grid { grid-template-columns: minmax(0, 1fr); }
+  .scenes { grid-template-columns: minmax(0, 1fr); }
+  .hero h1 { max-width: 22ch; }
+  .hero-actions .btn { flex: 1 1 auto; }
+  .shot { margin-top: 28px; }
+  .shot-sub { max-width: 1000px; margin-top: clamp(26px, 4vw, 40px); }
+
+.shot figcaption { display: none; }
+  .footer-top { grid-template-columns: minmax(0, 1fr); }
+  .compare tbody th { width: 110px; }
+}
+
+@media (max-width: 520px) {
+  :root { --gutter: 18px; }
+  .feature-grid { grid-template-columns: minmax(0, 1fr); }
+  .stats-grid { grid-template-columns: minmax(0, 1fr); row-gap: 22px; }
+  .hero-meta { gap: 4px 12px; }
+  .badge { font-size: 11.5px; }
+  .shot img { border-radius: var(--r-md); }
+  .cmd code { font-size: 11px; }
+  .faq-item summary { padding: 18px 0; font-size: var(--fs-sm); }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ 导航 ═══════════════ -->
+<header class="nav" id="nav">
+  <div class="shell nav-inner">
+    <a class="brand" href="#top" aria-label="智鲸 AI 首页">
+      <span class="logo" aria-hidden="true"></span>
+      <span class="brand-name">智鲸 AI</span>
+      <span class="brand-tag">桌面版</span>
+    </a>
+
+    <nav class="nav-links" aria-label="主导航">
+      <a href="#why">为什么桌面版</a>
+      <a href="#features">功能</a>
+      <a href="#scenes">应用场景</a>
+      <a href="#download">下载</a>
+      <a href="#requirements">系统要求</a>
+      <a href="#faq">常见问题</a>
+      <a href="developers.html">开发者文档</a>
+    </nav>
+
+    <div class="nav-cta">
+      <a class="btn btn-primary btn-sm" href="#download" data-download>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3v12m0 0l4-4m-4 4l-4-4M4 19h16" />
+        </svg>
+        下载客户端
+      </a>
+      <button class="nav-toggle" type="button" aria-label="展开菜单" aria-expanded="false" aria-controls="navDrawer" id="navToggle">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16" />
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="nav-drawer" id="navDrawer" data-open="false">
+    <a href="#why">为什么桌面版</a>
+    <a href="#features">功能</a>
+    <a href="#scenes">应用场景</a>
+    <a href="#download">下载与安装</a>
+    <a href="#requirements">系统要求</a>
+    <a href="#faq">常见问题</a>
+    <a href="developers.html">开发者文档</a>
+    <a class="btn btn-primary btn-block" href="#download" data-download>下载客户端</a>
+    <a class="btn btn-dark btn-block" href="https://github.com/zyh871/Local-Knowledge-Base-1.0.git" target="_blank" rel="noopener noreferrer" style="margin-top: 8px;">查看 GitHub</a>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ═══════════════ Hero ═══════════════ -->
+  <section class="hero">
+    <div class="shell hero-inner">
+      <span class="badge">
+        <b>已发布</b>
+        智鲸 AI 1.0 · 桌面客户端
+      </span>
+
+      <h1>智鲸 AI，<br />现在装在你<em>自己的电脑</em>上</h1>
+
+      <p class="hero-lead">
+        从网页应用升级为可下载安装、本地运行的桌面软件。
+        知识库、对话记录与生成的文件都留在本机，检索、工作流与创作在同一个窗口里完成。
+      </p>
+
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#download" data-download>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3v12m0 0l4-4m-4 4l-4-4M4 19h16" />
+          </svg>
+          下载桌面版
+        </a>
+        <a class="btn btn-dark" href="https://github.com/zyh871/Local-Knowledge-Base-1.0.git" target="_blank" rel="noopener noreferrer">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.09.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.37-3.37-1.37-.45-1.18-1.11-1.49-1.11-1.49-.91-.63.07-.62.07-.62 1 .07 1.53 1.05 1.53 1.05.89 1.57 2.34 1.12 2.91.86.09-.66.35-1.12.63-1.38-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05a9.36 9.36 0 0 1 2.5-.34c.85 0 1.71.12 2.5.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.8-4.57 5.05.36.32.68.94.68 1.89 0 1.37-.01 2.47-.01 2.81 0 .27.18.59.69.49A10.13 10.13 0 0 0 22 12.25C22 6.58 17.52 2 12 2z" />
+          </svg>
+          查看 GitHub
+        </a>
+        <a class="btn btn-ghost" href="developers.html">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+            <path d="M14 3v5h5M9 13h6M9 17h4" />
+          </svg>
+          开发者文档
+        </a>
+      </div>
+
+      <div class="hero-meta">
+        <span>Windows · macOS · Linux</span>
+        <i class="dot" aria-hidden="true"></i>
+        <span>个人版免费</span>
+        <i class="dot" aria-hidden="true"></i>
+        <span>数据默认不出本机</span>
+      </div>
+
+      <!-- 真实界面截图：由 frontend/scripts/capture-shots.mjs 跑真后端截取（2 倍图） -->
+      <figure class="shot">
+        <picture>
+          <source srcset="shots/app-chat.webp" type="image/webp" />
+          <img
+            src="shots/app-chat.png"
+            width="2880"
+            height="1800"
+            alt="智鲸 AI 对话界面：提问后给出带出处的回答，展开的参考来源里逐条列出命中的文档"
+            decoding="async"
+          />
+        </picture>
+        <figcaption>真实界面 · 检索命中的文档在回答下方逐条列出，点编号可跳回原文</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 指标 ═══════════════ -->
+  <section class="stats" aria-label="产品要点">
+    <div class="shell stats-grid">
+      <div>
+        <div class="stat-num">0<small>份副本</small></div>
+        <p class="stat-label">知识库与对话记录默认只写入本机，服务端不留副本</p>
+      </div>
+      <div>
+        <div class="stat-num">3<small>路召回</small></div>
+        <p class="stat-label">BM25 关键词 + 向量语义 + RRF 融合排序，结果带出处</p>
+      </div>
+      <div>
+        <div class="stat-num">5<small>类内置工具</small></div>
+        <p class="stat-label">计算、代码沙箱、文件写入、知识检索、联网搜索</p>
+      </div>
+      <div>
+        <div class="stat-num">10<small>家模型厂商</small></div>
+        <p class="stat-label">通过 OpenAI 兼容接口接入，也可指向自建或内网端点</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 为什么桌面版 ═══════════════ -->
+  <section class="section" id="why">
+    <div class="shell">
+      <div class="section-head reveal">
+        <span class="eyebrow">Why Desktop</span>
+        <h2>为什么要把知识库搬回本地</h2>
+        <p>
+          网页版需要你自己准备服务器、数据库与运行时。桌面版把这些打包成一个安装包——
+          更重要的是，数据从此留在你自己的磁盘上。
+        </p>
+      </div>
+
+      <div class="why-grid reveal">
+        <div class="why-card">
+          <div class="why-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="6" rx="2" />
+              <rect x="3" y="13" width="18" height="6" rx="2" />
+              <path d="M7 8h.01M7 16h.01" />
+            </svg>
+          </div>
+          <h3>数据落在你自己的磁盘</h3>
+          <p>
+            向量库、会话记录、生成的文件都存在本机目录里。没有云端副本，
+            也不需要为了查一份内部手册先把文件传到别人的服务器上。
+          </p>
+        </div>
+
+        <div class="why-card">
+          <div class="why-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
+              <path d="M12 12l8-4.5M12 12v9M12 12L4 7.5" />
+            </svg>
+          </div>
+          <h3>安装即用，不必自建服务</h3>
+          <p>
+            不需要装 Python、Node 或 Redis，也不用配反向代理。
+            下载、安装、填一次模型密钥，就能开始导入文档提问。
+          </p>
+        </div>
+
+        <div class="why-card">
+          <div class="why-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 6h9M4 12h6M4 18h9" />
+              <path d="M17 14l3 3-3 3" />
+              <path d="M20 17h-6" />
+            </svg>
+          </div>
+          <h3>直接读写本地文件</h3>
+          <p>
+            把项目目录绑定为工作区，工作流可以读取其中的文档、
+            把结果写成 Markdown 落到磁盘，而不是让你手动复制粘贴。
+          </p>
+        </div>
+
+        <div class="why-card">
+          <div class="why-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="14" rx="2" />
+              <path d="M8 21h8M12 17v4" />
+            </svg>
+          </div>
+          <h3>一个窗口装下全部</h3>
+          <p>
+            对话、工作流、AI 创作、团队空间、模型广场都在同一个应用里，
+            不必在多个浏览器标签页之间来回切换。
+          </p>
+        </div>
+      </div>
+
+      <div class="callout reveal">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 8h.01M11 12h1v4h1" />
+        </svg>
+        <p>
+          <strong>数据边界，说清楚比说好听重要。</strong>
+          知识库原文、对话记录与生成结果只存在你的机器上。
+          但模型推理仍然需要算力：被检索命中并送入提示词的文本片段，会随请求发往
+          <strong>你自己配置的模型端点</strong>——可以是云厂商 API，也可以是完全内网的自建服务。
+          换端点只改一处配置，不需要迁移数据。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <hr class="hairline" />
+
+  <!-- ═══════════════ 功能 ═══════════════ -->
+  <section class="section" id="features">
+    <div class="shell">
+      <div class="section-head reveal">
+        <span class="eyebrow">Features</span>
+        <h2>六件事，在桌面端做得更彻底</h2>
+        <p>
+          不是把网页版塞进一个壳子里。本地运行时让检索、文件与生成物真正连成一条链。
+        </p>
+      </div>
+
+      <div class="feature-grid">
+        <article class="card reveal">
+          <div class="card-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M20 20l-3.5-3.5" />
+            </svg>
+          </div>
+          <h3>本地知识库问答</h3>
+          <p>
+            把手册、合同、纪要导入本机向量库。答案里的每个断言都带编号，
+            点一下直接跳回原文段落，而不是让你自己去找。
+          </p>
+          <div class="tags"><span>引用溯源</span><span>RRF 融合</span><span>2048 维向量</span></div>
+        </article>
+
+        <article class="card reveal">
+          <div class="card-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+              <path d="M14 3v5h5M9 14l2 2 4-4" />
+            </svg>
+          </div>
+          <h3>文档摄取与去重</h3>
+          <p>
+            支持 PDF、Word、Markdown 与纯文本。入库时按内容指纹去重，
+            同一份文件反复导入不会让检索结果里出现三份相同段落。
+          </p>
+          <div class="tags"><span>批量导入</span><span>指纹去重</span><span>增量索引</span></div>
+        </article>
+
+        <article class="card reveal">
+          <div class="card-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="6" height="5" rx="1.5" />
+              <rect x="15" y="4" width="6" height="5" rx="1.5" />
+              <rect x="9" y="16" width="6" height="5" rx="1.5" />
+              <path d="M6 9v3h12V9M12 12v4" />
+            </svg>
+          </div>
+          <h3>带审批的工作流</h3>
+          <p>
+            先说清目标，再生成任务书，你确认方案后才开始执行。
+            涉及跑代码、写文件的步骤会强制要求人工批准，不会悄悄动手。
+          </p>
+          <div class="tags"><span>计划先审</span><span>步骤可回看</span><span>产物落盘</span></div>
+        </article>
+
+        <article class="card reveal">
+          <div class="card-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="13" height="16" rx="2" />
+              <path d="M6.5 15.5l3-3 2.5 2.5 2-2" />
+              <path d="M19 3.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z" />
+            </svg>
+          </div>
+          <h3>AI 创作</h3>
+          <p>
+            文生图、图生图、文生视频。生成物直接存进本地素材库，
+            按图片与视频分栏管理，链接不会过期。
+          </p>
+          <div class="tags"><span>文生图</span><span>图生视频</span><span>本地素材库</span></div>
+        </article>
+
+        <article class="card reveal">
+          <div class="card-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8" />
+            </svg>
+          </div>
+          <h3>模型广场</h3>
+          <p>
+            十家厂商的模型并列展示，按界面里的型号逐项配置密钥与地址。
+            兼容 OpenAI 规范的接口可以直接接入，按请求切换，不必重启。
+          </p>
+          <div class="tags"><span>OpenAI 兼容</span><span>自建端点</span><span>按需切换</span></div>
+        </article>
+
+        <article class="card reveal">
+          <div class="card-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="9" cy="8" r="3.2" />
+              <path d="M3 20v-1.5A4.5 4.5 0 0 1 7.5 14h3A4.5 4.5 0 0 1 15 18.5V20" />
+              <path d="M17 5.2a3.2 3.2 0 0 1 0 5.6M18.5 14a4.5 4.5 0 0 1 3.5 4.4V20" />
+            </svg>
+          </div>
+          <h3>团队空间与社区</h3>
+          <p>
+            所有者、管理员、编辑、只读四级角色，权限折算成能力字符串逐端点校验。
+            做好的东西可以发布到开源社区，草稿只有本团队可见。
+          </p>
+          <div class="tags"><span>四级角色</span><span>邀请链接</span><span>项目发布</span></div>
+        </article>
+      </div>
+
+      <figure class="shot shot-sub reveal">
+        <picture>
+          <source srcset="shots/app-models.webp" type="image/webp" />
+          <img
+            src="shots/app-models.png"
+            width="2880"
+            height="1800"
+            alt="模型广场：按厂商浏览可接入的模型，末尾的「自定义模型」卡片用于接入任意 OpenAI 兼容服务"
+            loading="lazy"
+            decoding="async"
+          />
+        </picture>
+        <figcaption>模型广场 · 厂商目录之外，还能用「自定义模型」接入任意 OpenAI 兼容端点</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 场景 ═══════════════ -->
+  <section class="section" id="scenes" style="background: var(--bg-2); border-block: 1px solid var(--line);">
+    <div class="shell">
+      <div class="section-head reveal">
+        <span class="eyebrow">Use Cases</span>
+        <h2>它解决的问题，通常长这样</h2>
+        <p>
+          共同点：资料是你自己的、体系庞杂、答案必须能追溯到原文。
+          这几类场景最适合先在本机跑起来。
+        </p>
+      </div>
+
+      <div class="scenes">
+        <article class="scene reveal">
+          <span class="scene-role">合规 / 法务</span>
+          <h3>把「哪一条这么规定」查清楚</h3>
+          <p>合同、监管文件、内部制度分别入库，提问时并排给出条款出处。</p>
+          <div class="qa">
+            <div class="qa-row"><b>问</b><span>这份框架协议里关于违约金上限的表述，和我们的标准模板差在哪？</span></div>
+            <div class="qa-row answer"><b>答</b><span>两处差异：上限比例 20% → 15%；新增了「累计不超过合同总额」的限定语<span class="cite-pill">1</span><span class="cite-pill">2</span>。</span></div>
+          </div>
+        </article>
+
+        <article class="scene reveal">
+          <span class="scene-role">制造 / 售后</span>
+          <h3>让老师傅的经验变成可查的答案</h3>
+          <p>维护手册、点检 SOP、历史工单一起入库，现场用自然语言就能问。</p>
+          <div class="qa">
+            <div class="qa-row"><b>问</b><span>液压泵异响先查哪里？拆检前要注意什么？</span></div>
+            <div class="qa-row answer"><b>答</b><span>先看吸油滤网压差是否超过 0.15 MPa，再测 10–50 Hz 振动峰值；停机前必须先泄压<span class="cite-pill">1</span><span class="cite-pill">3</span>。</span></div>
+          </div>
+        </article>
+
+        <article class="scene reveal">
+          <span class="scene-role">研发团队</span>
+          <h3>新人不必再逐个问人</h3>
+          <p>设计文档、接口说明、故障复盘构成团队的第二大脑，答案指回具体章节。</p>
+          <div class="qa">
+            <div class="qa-row"><b>问</b><span>上次网关超时那次，最后定位到哪个环节？改了什么？</span></div>
+            <div class="qa-row answer"><b>答</b><span>连接池上限 20 撞满，慢查询把连接占死。复盘里已经把上限提到 80 并加了 3 秒超时<span class="cite-pill">2</span>。</span></div>
+          </div>
+        </article>
+
+        <article class="scene reveal">
+          <span class="scene-role">研究 / 教学</span>
+          <h3>从一堆论文里长出综述骨架</h3>
+          <p>把文献库导入本机，先让它整理观点分歧，再逐条核对原文。</p>
+          <div class="qa">
+            <div class="qa-row"><b>问</b><span>这批文献里，对「检索增强能否缓解幻觉」有哪几种结论？</span></div>
+            <div class="qa-row answer"><b>答</b><span>三派：显著缓解（7 篇）、仅在有高质量语料时有效（4 篇）、可能引入新的错误（3 篇）<span class="cite-pill">1</span><span class="cite-pill">4</span>。</span></div>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 对比 ═══════════════ -->
+  <section class="section" id="compare">
+    <div class="shell">
+      <div class="section-head reveal">
+        <span class="eyebrow">Desktop vs Web</span>
+        <h2>和自建网页版的区别</h2>
+        <p>功能一致，差别在谁维护运行时、数据放在哪、以及文件能不能直接读写。</p>
+      </div>
+
+      <div class="compare-wrap reveal">
+        <table class="compare">
+          <thead>
+            <tr>
+              <th scope="col"></th>
+              <th scope="col">自建网页版</th>
+              <th scope="col" class="hl">桌面版</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">部署</th>
+              <td>需准备 Python / Node / Redis，自行启动服务</td>
+              <td class="hl">下载安装包，双击完成</td>
+            </tr>
+            <tr>
+              <th scope="row">数据位置</th>
+              <td>服务器磁盘，取决于谁在运维</td>
+              <td class="hl">你的本机目录</td>
+            </tr>
+            <tr>
+              <th scope="row">本地文件</th>
+              <td>需要手动上传</td>
+              <td class="hl">可绑定目录，直接读、直接写回</td>
+            </tr>
+            <tr>
+              <th scope="row">模型配置</th>
+              <td>改环境变量后重启</td>
+              <td class="hl">界面内切换，按请求生效</td>
+            </tr>
+            <tr>
+              <th scope="row">升级</th>
+              <td>拉代码、重建依赖</td>
+              <td class="hl">应用内提示新版本</td>
+            </tr>
+            <tr>
+              <th scope="row">多端访问</th>
+              <td>有内网地址即可任意设备打开</td>
+              <td>限于安装了客户端的设备</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 下载 ═══════════════ -->
+  <section class="download" id="download">
+    <div class="shell">
+      <div class="section-head reveal">
+        <span class="eyebrow">Download</span>
+        <h2>下载与安装</h2>
+        <p>
+          选一个平台下载安装包。本机已有 Ollama 与模型就零配置开用，
+          否则填一次模型密钥；之后导入文档即可开始提问。
+        </p>
+      </div>
+
+      <!-- 文件与大小取自真实构建产物（landing/dist）。改版本号时同步改这里和 download/ 下的文件名 -->
+      <div class="platforms">
+        <article class="platform is-primary reveal">
+          <div class="platform-top">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M3 5.6l7.6-1v7.1H3V5.6zm0 12.8l7.6 1v-7H3v6zm8.5 1.2L21 21V12.7h-9.5v6.9zm0-13.9v7H21V3l-9.5 1.7z" />
+            </svg>
+            <h3>Windows</h3>
+            <span class="hint-pill">多数用户</span>
+          </div>
+          <dl class="platform-meta">
+            <div><dt>版本</dt><dd>1.0.0</dd></div>
+            <div><dt>文件</dt><dd>zhijing-ai-client-1.0.0-installer.zip</dd></div>
+            <div><dt>大小</dt><dd>约 12 MB</dd></div>
+            <div><dt>方式</dt><dd>解压后双击 .exe，可自选安装位置</dd></div>
+          </dl>
+          <a class="btn btn-primary btn-block" href="download/zhijing-ai-client-1.0.0-installer.zip" download data-download="win">下载安装包</a>
+        </article>
+
+        <article class="platform reveal">
+          <div class="platform-top">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M16.2 12.7c0-2 1.6-3 1.7-3.1-.9-1.4-2.3-1.6-2.8-1.6-1.2-.1-2.3.7-2.9.7-.6 0-1.5-.7-2.5-.7-1.3 0-2.5.8-3.1 1.9-1.4 2.4-.4 5.9.9 7.8.7 1 1.5 2.1 2.5 2 1-.1 1.4-.6 2.6-.6s1.6.6 2.6.6c1.1 0 1.8-1 2.5-2 .8-1.1 1.1-2.2 1.1-2.3 0 0-2.6-1-2.6-2.7zM14.3 6.3c.5-.7.9-1.6.8-2.5-.8 0-1.8.5-2.4 1.2-.5.6-.9 1.5-.8 2.4.9.1 1.8-.4 2.4-1.1z" />
+            </svg>
+            <h3>macOS</h3>
+          </div>
+          <dl class="platform-meta">
+            <div><dt>版本</dt><dd>1.0.0</dd></div>
+            <div><dt>文件</dt><dd>zhijing-ai-client-1.0.0.zip</dd></div>
+            <div><dt>大小</dt><dd>约 0.7 MB</dd></div>
+            <div><dt>方式</dt><dd>源码包 · 需 Python 3.10+</dd></div>
+          </dl>
+          <a class="btn btn-ghost btn-block" href="download/zhijing-ai-client-1.0.0.zip" download data-download="zip">下载源码包</a>
+        </article>
+
+        <article class="platform reveal">
+          <div class="platform-top">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 2c-1.6 0-2.7 1.3-2.7 3.1 0 1 .4 1.9.9 2.5-.5.3-1 .6-1.4 1L7 7.6c-.7-.6-1.5-.9-2.2-.7-.9.3-1.3 1.3-1 2.6.2 1 .7 2 1.3 2.8-.3.6-.5 1.2-.6 1.9-.9.4-1.5 1.2-1.5 2.1 0 1 .7 1.8 1.8 2 .3.9.8 1.7 1.4 2.3.9-.1 1.7-.6 2.2-1.2.6.2 1.2.3 1.9.3s1.3-.1 1.9-.3c.5.6 1.3 1.1 2.2 1.2.6-.6 1.1-1.4 1.4-2.3 1.1-.2 1.8-1 1.8-2 0-.9-.6-1.7-1.5-2.1-.1-.7-.3-1.3-.6-1.9.6-.8 1.1-1.8 1.3-2.8.3-1.3-.1-2.3-1-2.6-.7-.2-1.5.1-2.2.7l-1.8 2c-.4-.4-.9-.7-1.4-1 .5-.6.9-1.5.9-2.5C14.7 3.3 13.6 2 12 2z" />
+            </svg>
+            <h3>Linux</h3>
+          </div>
+          <dl class="platform-meta">
+            <div><dt>版本</dt><dd>1.0.0</dd></div>
+            <div><dt>文件</dt><dd>zhijing-ai-client-1.0.0.zip</dd></div>
+            <div><dt>大小</dt><dd>约 0.7 MB</dd></div>
+            <div><dt>方式</dt><dd>源码包 · 需 Python 3.10+</dd></div>
+          </dl>
+          <a class="btn btn-ghost btn-block" href="download/zhijing-ai-client-1.0.0.zip" download data-download="zip">下载源码包</a>
+        </article>
+      </div>
+
+      <p class="dl-note reveal">
+        Windows 下载的是一个压缩包，解开后双击里面的
+        <strong><code>智鲸AI客户端-1.0.0-安装.exe</code></strong>：会弹出安装窗口，
+        默认装在用户目录，也可以点「浏览…」自己选位置（例如 <code>D:\智鲸AI</code>），
+        然后按「开始安装」。装完窗口里就能一键启动，桌面和开始菜单也会生成快捷方式。
+        不需要管理员权限；卸载在「设置 → 应用」里，或用安装目录的「卸载.cmd」。
+        macOS / Linux 没有原生安装程序，用源码包：解压后按包内 README 启动，
+        需要 <strong>Python 3.10+</strong>。首次启动会自动安装运行环境（约 400–500 MB，需要联网），
+        之后可离线使用。包内的 <code>检测本地模型.cmd</code> 会检查本机 Ollama，
+        有本地模型就用本地模型对话，没有则给出安装或改用云端 API 的指引。
+      </p>
+
+      <!-- 二维码指向线上完整链接（含 sharecode），扫码直达本页下载区 -->
+      <div class="share-card reveal">
+        <img
+          class="share-qr"
+          src="download/share-qr.png"
+          alt="扫码打开智鲸 AI 产品介绍页下载区"
+          width="108"
+          height="108"
+          loading="lazy"
+        />
+        <div class="share-body">
+          <h3>扫码在手机上打开</h3>
+          <p>
+            这是本页线上地址的二维码，扫码直达下载区。分享给别人时用它更稳——
+            链接被复制截断、或 <code>sharecode</code> 被改成小写都会打不开；
+            如果对方在微信里点开，让他点右上角「⋯ → 在浏览器打开」。
+          </p>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="step reveal">
+          <h4>下载安装包并解压</h4>
+          <p>
+            下载会得到一个压缩包，解压后双击里面的
+            <code>智鲸AI客户端-1.0.0-安装.exe</code>：弹出安装窗口，可自选安装位置，
+            按「开始安装」等进度条走完，全程无需管理员权限。
+            若被 SmartScreen 拦下，点「更多信息 → 仍要运行」。
+            macOS / Linux 用源码包，按包内 README 执行。
+          </p>
+          <div class="cmd">
+            <code>pip install -r backend/requirements.txt</code>
+            <button type="button" data-copy>复制</button>
+          </div>
+        </div>
+
+        <div class="step reveal">
+          <h4>等待环境就绪后启动</h4>
+          <p>
+            安装完成后双击桌面上的「智鲸 AI 客户端」。首次启动会安装运行环境，
+            完成后浏览器自动打开 <code>127.0.0.1:8000</code>；之后启动只需几秒。
+          </p>
+        </div>
+
+        <div class="step reveal">
+          <h4>导入文档，开始提问</h4>
+          <p>
+            在文档管理里拖入 PDF、Word 或 Markdown，等待向量化完成。
+            之后在对话框直接提问，答案里的角标可以点回原文。
+          </p>
+        </div>
+      </div>
+
+      <div class="reveal" style="margin-top: 34px;">
+        <p style="font-size: var(--fs-xs); color: var(--ink-3); margin-bottom: 12px;">
+          开发者也可以直接从源码运行（与桌面版同一套后端）：
+        </p>
+        <div class="cmd" style="margin-top: 0;">
+          <code>git clone &lt;repo&gt; &amp;&amp; cd backend &amp;&amp; pip install -r requirements.txt &amp;&amp; uvicorn app.main:app</code>
+          <button type="button" data-copy>复制</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 系统要求 ═══════════════ -->
+  <section class="section" id="requirements">
+    <div class="shell">
+      <div class="section-head reveal">
+        <span class="eyebrow">Requirements</span>
+        <h2>系统要求</h2>
+        <p>一台普通的办公电脑就够。内存主要取决于知识库规模，而不是客户端本身。</p>
+      </div>
+
+      <div class="req-grid">
+        <div class="compare-wrap reveal">
+          <table class="req-table">
+            <thead>
+              <tr>
+                <th scope="col">项目</th>
+                <th scope="col">最低配置</th>
+                <th scope="col">推荐配置</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">操作系统</th>
+                <td>Windows 10 22H2 / macOS 12 / Ubuntu 20.04</td>
+                <td>Windows 11 / macOS 14 / Ubuntu 22.04</td>
+              </tr>
+              <tr>
+                <th scope="row">处理器</th>
+                <td>双核 64 位</td>
+                <td>四核及以上</td>
+              </tr>
+              <tr>
+                <th scope="row">内存</th>
+                <td>8 GB</td>
+                <td>16 GB</td>
+              </tr>
+              <tr>
+                <th scope="row">磁盘</th>
+                <td>2 GB 可用空间</td>
+                <td>20 GB 及以上（含知识库与生成物）</td>
+              </tr>
+              <tr>
+                <th scope="row">网络</th>
+                <td>调用云端模型时需要</td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <th scope="row">显示</th>
+                <td>1280 × 800</td>
+                <td>1440 × 900 及以上</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <aside class="aside-card reveal">
+          <h3>关于离线使用</h3>
+          <p>
+            客户端本身不需要联网即可启动，文档管理与检索也在本机完成。
+            但只要模型走的是云端 API，提问时就必须有网。
+          </p>
+          <ul class="check-list">
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5" /></svg>
+              <span>把模型端点指向内网或本机的 OpenAI 兼容服务，即可全程不出外网</span>
+            </li>
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5" /></svg>
+              <span>文档解析、向量化调用的是你配置的嵌入模型，不额外上传原文</span>
+            </li>
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5" /></svg>
+              <span>更换嵌入模型后需要重建向量库，界面上有对应操作</span>
+            </li>
+          </ul>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <hr class="hairline" />
+
+  <!-- ═══════════════ FAQ ═══════════════ -->
+  <section class="section" id="faq">
+    <div class="shell">
+      <div class="section-head reveal">
+        <span class="eyebrow">FAQ</span>
+        <h2>常见问题</h2>
+      </div>
+
+      <div class="faq-list reveal">
+        <details class="faq-item" open>
+          <summary>
+            <span class="faq-q">桌面版和网页版是两套东西吗？</span>
+            <span class="faq-sign" aria-hidden="true"></span>
+          </summary>
+          <div class="faq-a">
+            <p>同一套后端与同一套界面，桌面版把运行时、依赖与服务进程一起打包了。数据格式一致，本机目录可以直接备份或迁移。</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span class="faq-q">我的文档会被上传到服务器吗？</span>
+            <span class="faq-sign" aria-hidden="true"></span>
+          </summary>
+          <div class="faq-a">
+            <p>不会整份上传。知识库原文、对话记录、生成结果都写在你本机的目录里。</p>
+            <p>提问时，只有被检索命中、需要送进提示词的那几段文本会随请求发给你配置的模型端点。如果这个端点是内网服务，文本就不会离开你的网络。</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span class="faq-q">不联网能用吗？</span>
+            <span class="faq-sign" aria-hidden="true"></span>
+          </summary>
+          <div class="faq-a">
+            <p>客户端启动、文档管理、检索都在本机完成，不依赖外网。但生成答案必须调用模型，所以要么有网，要么把模型端点指向内网 / 本机上的 OpenAI 兼容服务。</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span class="faq-q">怎么用本地模型，不填任何密钥？</span>
+            <span class="faq-sign" aria-hidden="true"></span>
+          </summary>
+          <div class="faq-a">
+            <p>装好 <a href="https://ollama.com/download" target="_blank" rel="noopener">Ollama</a> 之后，运行客户端目录里的 <code>检测本地模型.cmd</code>（或 <code>python tools/ollama_bootstrap.py</code>）。它会依次检查三件事：</p>
+            <p>磁盘上有没有 ollama 程序、本机 11434 端口上的服务在不在、以及服务里有没有<strong>可对话</strong>的模型（纯向量模型不算）。三项都过，就直接写好配置，启动后用的就是本地模型，请求不会离开这台机器。</p>
+            <p>任何一项没过，它会把差的那一步说清楚：没装就给出下载地址和一条 <code>ollama pull</code> 命令（按内存推荐模型大小）；装了但服务没起，就给出启动命令；都没有也可以直接改用云端 API。</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span class="faq-q">必须用某一家的模型吗？</span>
+            <span class="faq-sign" aria-hidden="true"></span>
+          </summary>
+          <div class="faq-a">
+            <p>不必须。模型广场里并列了十家厂商的常用型号，也可以新增自定义端点，只要接口符合 OpenAI 规范（<code>/chat/completions</code>、<code>/embeddings</code>）就能接。</p>
+            <p>注意：更换嵌入模型后向量维度可能变化，需要重建向量库。</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span class="faq-q">支持哪些文档格式？</span>
+            <span class="faq-sign" aria-hidden="true"></span>
+          </summary>
+          <div class="faq-a">
+            <p>PDF、Word（.docx）、Markdown 与纯文本。扫描件需要先做 OCR 再导入，客户端不内置 OCR。单个文件过大时会按段落切分，切分结果可以在文档详情里查看。</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span class="faq-q">数据存在哪里？怎么备份或迁移？</span>
+            <span class="faq-sign" aria-hidden="true"></span>
+          </summary>
+          <div class="faq-a">
+            <p>都在应用的数据目录下：向量库在 <code>chroma_db/</code>，会话与业务数据是 <code>data/</code> 下的几个 SQLite 文件，创作素材在 <code>data/creations/</code>。</p>
+            <p>备份就是复制这几个目录；迁移到新机器时整份拷过去即可，不需要导出导入流程。</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span class="faq-q">卸载会不会把知识库一起删掉？</span>
+            <span class="faq-sign" aria-hidden="true"></span>
+          </summary>
+          <div class="faq-a">
+            <p>卸载程序只移除应用本体，数据目录默认保留。确认不再需要时，手动删除该目录即可彻底清理。</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span class="faq-q">有 Linux 版吗？能自己编译吗？</span>
+            <span class="faq-sign" aria-hidden="true"></span>
+          </summary>
+          <div class="faq-a">
+            <p>目前没有原生安装包。下载通用包解压后，用 <code>python3 deploy/serve.py</code> 起一个本地服务器即可访问，只依赖 Python 标准库。</p>
+          </div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 收尾 ═══════════════ -->
+  <section class="final">
+    <div class="shell final-inner">
+      <h2>把知识留在自己的机器上</h2>
+      <p>
+        下载智鲸 AI 桌面版，导入你的第一份文档。装完之后你会发现，
+        最踏实的地方在于——这些东西一直都在你自己的磁盘里。
+      </p>
+      <div class="final-actions">
+        <a class="btn btn-primary" href="#download" data-download>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3v12m0 0l4-4m-4 4l-4-4M4 19h16" />
+          </svg>
+          下载桌面版
+        </a>
+        <a class="btn btn-ghost" href="#requirements">先看系统要求</a>
+      </div>
+      <p class="final-meta">v1.0.0 · Windows / macOS / Linux · 个人版免费</p>
+    </div>
+  </section>
+
+</main>
+
+<!-- ═══════════════ Footer ═══════════════ -->
+<footer class="footer">
+  <div class="shell">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a class="brand" href="#top">
+          <span class="logo" aria-hidden="true"></span>
+          <span class="brand-name">智鲸 AI</span>
+        </a>
+        <p>本地优先的私有知识库助手。检索、工作流、创作与团队协作，都跑在你自己的机器上。</p>
+      </div>
+
+      <div class="footer-col">
+        <h4>产品</h4>
+        <ul>
+          <li><a href="#features">功能</a></li>
+          <li><a href="#scenes">应用场景</a></li>
+          <li><a href="#compare">桌面版与网页版</a></li>
+          <li><a href="#download">下载</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col">
+        <h4>支持</h4>
+        <ul>
+          <li><a href="#download">安装指引</a></li>
+          <li><a href="#requirements">系统要求</a></li>
+          <li><a href="#faq">常见问题</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col">
+        <h4>关于</h4>
+        <ul>
+          <li><span>版本 1.0.0</span></li>
+          <li><a href="#requirements">数据与隐私</a></li>
+          <li><a href="#requirements">离线部署</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <span>© 2026 智鲸 AI · 保留所有权利</span>
+      <span>本站为产品介绍页，桌面客户端需在本机安装后使用</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* ==========================================================================
+   交互脚本：无依赖、渐进增强。
+   脚本失效时页面仍可正常阅读（FAQ 用原生 details，导航是普通锚点）。
+   ========================================================================== */
+(function () {
+  'use strict';
+
+  /* ── 1. 滚动后导航加毛玻璃与分隔线 ────────────────────── */
+  var nav = document.getElementById('nav');
+  var lastStuck = false;
+
+  function onScroll() {
+    var stuck = window.scrollY > 8;
+    if (stuck !== lastStuck) {
+      nav.classList.toggle('is-stuck', stuck);
+      lastStuck = stuck;
+    }
+  }
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+
+  /* ── 2. 移动端菜单 ───────────────────────────────────── */
+  var toggle = document.getElementById('navToggle');
+  var drawer = document.getElementById('navDrawer');
+
+  function setDrawer(open) {
+    drawer.setAttribute('data-open', open ? 'true' : 'false');
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.setAttribute('aria-label', open ? '收起菜单' : '展开菜单');
+  }
+
+  toggle.addEventListener('click', function () {
+    setDrawer(drawer.getAttribute('data-open') !== 'true');
+  });
+
+  // 点了链接就收起，否则抽屉会挡在内容上
+  drawer.addEventListener('click', function (e) {
+    if (e.target.closest('a')) setDrawer(false);
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') setDrawer(false);
+  });
+
+  // 回到桌面宽度时把抽屉状态复位，避免从手机转屏后留一层白板
+  window.addEventListener('resize', function () {
+    if (window.innerWidth > 900) setDrawer(false);
+  });
+
+  /* ── 3. FAQ：一次只展开一条 ──────────────────────────── */
+  var faqItems = Array.prototype.slice.call(document.querySelectorAll('.faq-item'));
+
+  faqItems.forEach(function (item) {
+    item.addEventListener('toggle', function () {
+      if (!item.open) return;
+      faqItems.forEach(function (other) {
+        if (other !== item) other.open = false;
+      });
+    });
+  });
+
+  /* ── 4. 命令行复制 ───────────────────────────────────── */
+  document.querySelectorAll('[data-copy]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var code = btn.parentElement.querySelector('code');
+      if (!code) return;
+      var text = code.textContent.trim();
+
+      function done(ok) {
+        btn.textContent = ok ? '已复制' : '复制失败';
+        btn.classList.toggle('done', ok);
+        setTimeout(function () {
+          btn.textContent = '复制';
+          btn.classList.remove('done');
+        }, 1600);
+      }
+
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(function () { done(true); })
+          .catch(function () { done(false); });
+      } else {
+        // file:// 或非 HTTPS 环境下 clipboard API 不可用，退回选区复制
+        try {
+          var ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          var ok = document.execCommand('copy');
+          document.body.removeChild(ta);
+          done(ok);
+        } catch (err) {
+          done(false);
+        }
+      }
+    });
+  });
+
+  /* ── 5. 下载按钮 ───────────────────────────────────────
+     之前这里只有一个 DOWNLOAD_BASE 常量、默认值 '#download'，
+     于是所有按钮都只是跳到页内锚点，根本没有文件可下。
+     现在按 data-download 的取值映射到 download/ 下的真实文件：
+     站点根目录 → download/ 是同源，`download` 属性才会真正触发保存。 */
+  var DOWNLOADS = {
+    win: 'download/zhijing-ai-client-1.0.0-installer.zip',
+    zip: 'download/zhijing-ai-client-1.0.0.zip'
+  };
+
+  document.querySelectorAll('[data-download]').forEach(function (el) {
+    var key = el.getAttribute('data-download') || 'win';
+    var url = DOWNLOADS[key];
+    if (!url) return;
+    el.setAttribute('href', url);
+    el.setAttribute('download', '');
+
+    // 文件缺失时别让用户点进 404：先探测一次，失败就把按钮降级成文字提示。
+    // 只在 http(s) 下探测 —— file:// 的 fetch 必然被 CORS 拦，异常虽被吞掉，
+    // 但浏览器仍会往控制台刷错误，单文件离线使用时就显得很脏。
+    if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
+
+    fetch(url, { method: 'HEAD' }).then(function (res) {
+      if (res.ok) return;
+      el.classList.add('dl-missing');
+      el.setAttribute('aria-disabled', 'true');
+      el.textContent = '安装包暂未提供';
+      el.removeAttribute('href');
+      el.removeAttribute('download');
+      el.style.pointerEvents = 'none';
+      el.style.opacity = '0.55';
+    }).catch(function () {});
+  });
+
+  /* ── 6. 滚动进入动效 ─────────────────────────────────── */
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var targets = Array.prototype.slice.call(document.querySelectorAll('.reveal'));
+
+  if (reduce || !('IntersectionObserver' in window)) {
+    targets.forEach(function (el) { el.classList.add('is-in'); });
+  } else {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        // 同一批元素按 DOM 顺序错开一点，读起来像依次落位而不是整体闪现
+        var delay = Math.min(entry.target.dataset.i || 0, 4) * 55;
+        setTimeout(function () { entry.target.classList.add('is-in'); }, delay);
+        io.unobserve(entry.target);
+      });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+
+    targets.forEach(function (el, i) {
+      el.dataset.i = i % 5;
+      io.observe(el);
+    });
+  }
+})();
+</script>
+</body>
+</html>

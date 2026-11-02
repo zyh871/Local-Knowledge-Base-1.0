@@ -11,8 +11,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.api.v1 import (
+    admin_identity,
     agent,
     auth,
+    community,
     conversations,
     creation,
     documents,
@@ -35,6 +37,10 @@ api_router = APIRouter()
 _global_limit = [Depends(rate_limit("global"))]
 
 api_router.include_router(auth.router, tags=["认证"], dependencies=_global_limit)
+# 身份管理：部署管理员建号/邀请 + 公开邀请接受
+api_router.include_router(
+    admin_identity.router, tags=["身份"], dependencies=_global_limit
+)
 api_router.include_router(qa.router, tags=["问答"], dependencies=_global_limit)
 api_router.include_router(
     documents.router, tags=["文档"], dependencies=_global_limit
@@ -58,3 +64,7 @@ api_router.include_router(creation.router, tags=["创作"], dependencies=_global
 api_router.include_router(workflow.router, tags=["工作流"], dependencies=_global_limit)
 # 团队空间与角色权限：独立命名空间 `/teams/*`（与 /workflow/workspaces 区分）
 api_router.include_router(teams.router, tags=["团队空间"], dependencies=_global_limit)
+# 开源社区：项目展示、贡献者与互动
+api_router.include_router(
+    community.router, tags=["社区"], dependencies=_global_limit
+)

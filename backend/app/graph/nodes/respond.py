@@ -245,7 +245,12 @@ def generate(state: RAGState, deps: Deps) -> dict:
       3. **失败回退返回空内容时不再静默保留半截答案** —— 显式标记 `truncated`，
          避免"看起来正常、其实少了一半"这种最难排查的状态
     """
-    from app.rag.providers import get_llm, get_thinking_llm, resolve_model
+    from app.rag.providers import (
+        get_llm,
+        get_thinking_llm,
+        is_model_available,
+        resolve_model,
+    )
     from app.utils.text import finish_reason_of, usage_of
 
     prompt = state.get("prompt") or ""
@@ -264,10 +269,20 @@ def generate(state: RAGState, deps: Deps) -> dict:
     if thinking_on:
         target = requested or model_settings.llm_model
         if not model_settings.is_thinking_capable(target):
-            thinking_model = model_settings.thinking_model
-            logger.info(
-                f"深度思考：{target} 无推理输出，改用 {thinking_model}"
-            )
+            candidate = model_settings.thinking_model
+            # ★ 只有这个模型在当前后端真的存在，才允许切过去。
+            #   配置里的思考模型是 glm-4.5 这类云端型号；本地 Ollama 后端
+            #   根本没有它，无脑切过去会让整轮对话直接失败：
+            #   「（模型不可用：不支持的模型: glm-4.5）」。
+            if candidate and is_model_available(candidate):
+                thinking_model = candidate
+                logger.info(f"深度思考：{target} 无推理输出，改用 {thinking_model}")
+            else:
+                thinking_model = ""
+                logger.info(
+                    f"深度思考：{target} 无推理输出，且 {candidate or '(未配置)'} "
+                    f"在当前后端不可用，按普通模型回答"
+                )
         else:
             thinking_model = target
 

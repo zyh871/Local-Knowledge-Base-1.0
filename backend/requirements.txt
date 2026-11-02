@@ -10,6 +10,9 @@ langchain>=0.3.0
 langchain-chroma>=0.2.0
 langchain-community>=0.3.0
 langchain-openai>=0.3.0
+# MODEL_BACKEND=ollama 的运行时依赖。缺了它，本地模型这条路会在第一次调用时
+# 报 "No module named 'langchain_ollama'"——配置看着是通的，实际一个字都答不出来。
+langchain-ollama>=0.2.0
 langchain-text-splitters>=0.1.0
 langchain-classic>=0.0.11
 rank-bm25>=0.2.2

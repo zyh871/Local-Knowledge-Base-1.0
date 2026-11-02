@@ -34,7 +34,7 @@ async def login_for_access_token(
     from app.core.config import get_security_settings
 
     token = create_access_token(
-        data={"sub": user.username},
+        data={"sub": user.id or user.username, "username": user.username},
         expires_delta=timedelta(
             minutes=get_security_settings().access_token_expire_minutes
         ),
@@ -45,4 +45,10 @@ async def login_for_access_token(
 
 @router.get("/users/me/", response_model=User, summary="获取当前用户")
 async def read_users_me(current_user: CurrentUser) -> User:
-    return User(username=current_user.username, disabled=current_user.disabled)
+    return User(
+        id=current_user.id,
+        username=current_user.username,
+        display_name=current_user.display_name,
+        global_role=current_user.global_role,
+        disabled=current_user.disabled,
+    )

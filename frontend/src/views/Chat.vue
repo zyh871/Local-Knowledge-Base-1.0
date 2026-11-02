@@ -781,6 +781,42 @@
             问答
           </button>
 
+          <!-- 深度思考 / 智能搜索：做成带文字的胶囊按钮。
+               以前是输入框里两个 16px 的小图标，用户根本看不出是可点的开关。 -->
+          <button
+            type="button"
+            class="quick-pill toggle-pill inline-flex items-center gap-1.5 px-3 py-1.5 text-xs whitespace-nowrap"
+            :class="{ on: thinkingEnabled }"
+            :disabled="loading || !thinkingSupported"
+            :title="thinkingSupported
+              ? (thinkingEnabled ? '已开启：先展示推理过程再回答（更慢）' : '开启深度思考，展示模型的推理过程')
+              : '当前后端没有可输出推理的模型（本地模型通常不支持，可改用云端或配置 THINKING_MODELS）'"
+            :aria-pressed="thinkingEnabled"
+            @click="toggleThinking"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3.6" />
+              <path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2" />
+              <path d="M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6" />
+            </svg>
+            深度思考
+          </button>
+          <button
+            type="button"
+            class="quick-pill toggle-pill inline-flex items-center gap-1.5 px-3 py-1.5 text-xs whitespace-nowrap"
+            :class="{ on: forceSearch }"
+            :disabled="loading"
+            :title="forceSearch ? '已开启：回答前先联网检索' : '开启智能搜索，回答前先联网检索'"
+            :aria-pressed="forceSearch"
+            @click="forceSearch = !forceSearch"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M3 12h18M12 3c2.5 2.6 3.8 5.7 3.8 9S14.5 18.4 12 21c-2.5-2.6-3.8-5.7-3.8-9S9.5 5.6 12 3z" />
+            </svg>
+            智能搜索
+          </button>
+
           <!-- 模型切换控件（右对齐）：显示当前模型，点击展开候选列表 -->
           <div class="model-picker ml-auto">
             <button
@@ -862,19 +898,8 @@
               </svg>
               <input type="file" accept="image/*" @change="handleImageSelect" class="hidden" :disabled="loading" />
             </label>
-            <button :class="['toolbar-btn flex items-center justify-center p-2', { active: forceSearch }]" @click="forceSearch = !forceSearch" :title="forceSearch ? '已开启联网搜索' : '开启联网搜索'" aria-label="联网搜索">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"/>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-            </button>
-            <!-- 深度思考：开启后请求会带上 thinking=true，推理过程实时显示在气泡顶部 -->
-            <button :class="['toolbar-btn flex items-center justify-center p-2', { active: thinkingEnabled }]" @click="toggleThinking" :title="thinkingEnabled ? '已开启深度思考：展示模型推理过程（回答会更慢）' : '开启深度思考（展示推理过程）'" aria-label="深度思考">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 3a5 5 0 0 0-5 5c0 1.6.7 2.8 1.6 3.7.6.6.9 1.2.9 2V15h5v-1.3c0-.8.3-1.4.9-2A5 5 0 0 0 12 3z"/>
-                <path d="M9.5 18h5M10 21h4"/>
-              </svg>
-            </button>
+            <!-- 深度思考 / 智能搜索 已移到输入框上方的胶囊按钮（更显眼），
+                 这里不再重复放两个小图标。 -->
           </div>
           <div class="flex-1 min-w-0">
             <div v-if="pendingImage" class="image-preview-bar flex items-center gap-2 mb-2 px-2 py-1.5 rounded-lg">
@@ -1215,6 +1240,17 @@ async function fetchModels() {
     if (!thinkingInfo.value.enabled && thinkingEnabled.value) {
       thinkingEnabled.value = false
     }
+    // ★ 当前后端没有任何「会输出推理」的模型（典型：本地 Ollama）时也关掉并禁用，
+    //   否则点开开关只会把请求发给一个不存在的模型，或者什么都不发生——
+    //   两种都让用户以为按钮坏了。
+    if (!thinkingInfo.value.models.length && thinkingEnabled.value) {
+      thinkingEnabled.value = false
+      try {
+        localStorage.setItem('thinkingEnabled', '0')
+      } catch (e) {
+        /* 隐私模式忽略 */
+      }
+    }
 
     const ids = availableModels.value.map(m => m.id)
     // 已存的选择若已不在白名单（比如换了后端），回落到服务端默认
@@ -1257,6 +1293,10 @@ const forceSearch = ref(false)
 const thinkingEnabled = ref(localStorage.getItem('thinkingEnabled') !== '0')
 /** 服务端下发的思考能力（哪些模型真的会输出推理、默认用哪个） */
 const thinkingInfo = ref({ enabled: false, model: '', models: [] })
+/** 当前后端有没有「会输出推理」的模型；没有就禁用开关，别让按钮看起来像坏了 */
+const thinkingSupported = computed(
+  () => !!thinkingInfo.value.enabled && (thinkingInfo.value.models || []).length > 0,
+)
 /** 每条消息的推理面板是否展开（流式期间强制展开，结束后默认收起） */
 const reasoningOpen = reactive({})
 
@@ -4095,9 +4135,15 @@ onUnmounted(() => {
 
 .question-textarea {
   color: var(--color-text-primary);
-  line-height: var(--leading-normal);
+  /* ★ 行高必须等于 min-height：单行时文字才会在框内垂直居中，
+     否则（19.5px 行高 / 22px 高度）文字会贴着上半部分，
+     看起来就比左侧的图标「低了一截」。 */
+  line-height: 22px;
   min-height: 22px;
   font-family: var(--font-body);
+  padding: 0;
+  margin: 0;
+  align-self: center;
 }
 
 .question-textarea::placeholder {
@@ -4186,6 +4232,33 @@ onUnmounted(() => {
 .quick-tools .quick-pill:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* 深度思考 / 智能搜索：胶囊开关。
+   关闭时是普通描边，开启时整块染上主色——一眼能看出当前是开还是关。 */
+.quick-tools .toggle-pill {
+  border-radius: 999px;
+  padding-left: 13px;
+  padding-right: 13px;
+  gap: 6px;
+  transition: border-color 0.15s, color 0.15s, background-color 0.15s;
+}
+
+.quick-tools .toggle-pill.on {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background-color: rgba(59, 91, 219, 0.1);
+  background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  font-weight: 600;
+}
+
+.quick-tools .toggle-pill.on:hover:not(:disabled) {
+  background-color: rgba(59, 91, 219, 0.16);
+  background-color: color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+.quick-tools .toggle-pill svg {
+  flex-shrink: 0;
 }
 
 /* ===== 模型切换控件 ===== */

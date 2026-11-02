@@ -122,6 +122,27 @@
             </span>
             <span class="vendor-arrow">→</span>
           </button>
+
+          <!-- 自定义模型：不在目录里的端点，四项自己填 -->
+          <button class="vendor-card custom-card" @click="openCustom">
+            <span class="vendor-icon">
+              <span class="vendor-logo-fallback" style="background: #5F6E7A">＋</span>
+            </span>
+            <span class="vendor-body">
+              <span class="vendor-name-row">
+                <span class="vendor-name">自定义模型</span>
+                <span class="vendor-en">Custom</span>
+              </span>
+              <span class="vendor-desc">
+                接入任意兼容 OpenAI 规范的服务：填 Base URL、模型 ID 与密钥即可，不需要在目录里。
+              </span>
+              <span class="vendor-meta">
+                <span>自填参数</span>
+                <span v-if="customCount" class="vendor-connected">{{ customCount }} 个已接入</span>
+              </span>
+            </span>
+            <span class="vendor-arrow">→</span>
+          </button>
         </div>
         <p class="mp-footnote">
           模型清单、模型 ID 与接口地址以厂商开放平台文档为准；接入要求服务兼容 OpenAI 规范。
@@ -200,7 +221,9 @@
               </span>
               <div class="min-w-0">
                 <h3 class="config-title">{{ activeModel.name }}</h3>
-                <p class="config-sub"><code>{{ activeModel.id }}</code> · {{ activeVendor.name }}</p>
+                <p class="config-sub">
+                  <template v-if="activeModel.id"><code>{{ activeModel.id }}</code> · </template>{{ activeVendor.name }}
+                </p>
               </div>
               <span v-if="editingId" class="model-connected">编辑已有接入</span>
             </div>
@@ -476,6 +499,31 @@ function connectedCount(vendor) {
   return vendor.models.filter((m) => endpointFor(vendor, m)).length
 }
 
+/** 已接入的端点里，有多少个不属于目录中的任何厂商（= 纯自定义）。 */
+const customCount = computed(
+  () =>
+    endpoints.value.filter(
+      (e) =>
+        !vendors.some(
+          (v) =>
+            v.baseUrl &&
+            e.base_url.replace(/\/+$/, '').startsWith(v.baseUrl.replace(/\/+$/, '')),
+        ),
+    ).length,
+)
+
+/** 从模型广场直接新建一个自定义模型（四项全空，用户自己填）。 */
+function openCustom() {
+  activeVendor.value = CUSTOM_VENDOR
+  activeModel.value = { id: '', name: '自定义模型', types: ['chat'] }
+  editingId.value = ''
+  returnView.value = 'mine'
+  form.value = { name: '', base_url: '', api_key: '', api_key_masked: '', model: '' }
+  testResult.value = null
+  errorMessage.value = ''
+  view.value = 'model'
+}
+
 function openModel(vendor, model) {
   const existing = endpointFor(vendor, model)
   activeVendor.value = vendor
@@ -551,7 +599,9 @@ function goBack() {
   errorMessage.value = ''
   testResult.value = null
   if (view.value === 'model') {
-    view.value = returnView.value === 'mine' ? 'mine' : 'vendor'
+    const toMine = returnView.value === 'mine'
+    view.value = toMine ? 'mine' : 'vendor'
+    if (toMine) load()
   } else if (view.value === 'vendor') {
     view.value = 'plaza'
     activeVendor.value = null
@@ -953,6 +1003,16 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
   gap: 14px;
+}
+
+/* 自定义模型卡片：虚线边框，和「厂商目录」区分开 */
+.custom-card {
+  border-style: dashed;
+  background: transparent;
+}
+
+.custom-card:hover {
+  border-style: solid;
 }
 
 .vendor-card {

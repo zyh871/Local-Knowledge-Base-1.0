@@ -2,16 +2,16 @@
 /**
  * 侧栏品牌标题：logo + 文字。
  *
- * 为什么单独抽组件：Chat.vue 与 WorkView.vue 的侧栏标题都要求「logo + 文案」，
- * 而 logo 需要深/浅两版 —— 两处各写一遍切换逻辑迟早会漏改其中一处。
+ * 为什么单独抽组件：Chat.vue / WorkView.vue / CreateView.vue 的侧栏标题都要求
+ * 「logo + 文案」，各写一遍切换逻辑迟早会漏改其中一处。
  *
- * 为什么用 CSS 切图而不是 `<picture>` + `prefers-color-scheme`：
- * 主题开关 `useTheme` 是给 `<html>` 加 `.dark` class（**可手动覆盖系统设置**），
- * 而 `prefers-color-scheme` 只跟随操作系统。手动切到与系统相反的主题时两者
- * 不一致，logo 会选错版本。所以这里以 `html.dark` 为唯一判据。
+ * logo 为什么不再区分深浅两版：
+ *   图形本体是中蓝鲸鱼剪影，腹部与浪花是**白色镂空**——放在深色底上会透出底色，
+ *   看起来「漏气」。所以统一用 `zhijing-logo-white.png`：纯白圆角底板 + 居中图形。
+ *   浅色主题下白底与背景几乎同色（只剩图形），深色主题下是一枚白色小方块，
+ *   两种情况下都还原了设计稿的观感，也就不再需要 html.dark 分支。
  */
-import logoDark from '../assets/zhijing-logo.png'
-import logoLight from '../assets/zhijing-logo-light.png'
+import logoWhite from '../assets/zhijing-logo-white.png'
 
 defineProps({
   /** 标题文字 */
@@ -22,8 +22,7 @@ defineProps({
 <template>
   <div class="brand-title">
     <span class="brand-logo-box">
-      <img class="brand-logo brand-logo--dark" :src="logoDark" alt="" aria-hidden="true" />
-      <img class="brand-logo brand-logo--light" :src="logoLight" alt="" aria-hidden="true" />
+      <img class="brand-logo" :src="logoWhite" alt="" aria-hidden="true" />
     </span>
     <h1 class="brand-name">{{ text }}</h1>
   </div>
@@ -53,21 +52,14 @@ defineProps({
   height: 100%;
   object-fit: contain;
   object-position: center;
-  /* 原图四周留白已在生成脚本里裁掉，这里只做等比缩放 */
-  transform: scale(1.18);
+  /* 底板本身已是白底圆角，这里再补一圈极淡描边：
+     浅色主题下白底与背景同色，没有这圈线就看不出边界 */
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px rgba(11, 17, 24, 0.08);
 }
 
-/* 默认（浅色主题）显示深色 logo */
-.brand-logo--light {
-  display: none;
-}
-
-:global(html.dark) .brand-logo--dark {
-  display: none;
-}
-
-:global(html.dark) .brand-logo--light {
-  display: block;
+:global(html.dark) .brand-logo {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
 .brand-name {

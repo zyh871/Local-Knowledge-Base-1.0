@@ -169,6 +169,18 @@ class CachedEmbeddings:
 
         return [r if r is not None else [] for r in results]
 
+    # ★ 必须实现 __call__
+    #
+    # chromadb 建 collection 时，`embedding_function` 若不是「可调用对象」，
+    # 它会**静默回落到内置的 all-MiniLM-L6-v2 ONNX 模型**：
+    #   * 首次使用要联网从 chroma-onnx-models.s3.amazonaws.com 下 79 MB
+    #   * 而这一步在同步路径上，会把整个事件循环卡死（连 /token 都不回）
+    #   * 用户看到的就是「上传文档一直转圈 / 全站卡住」
+    # 加上 __call__ 之后 chroma 才会真正用我们配置的嵌入模型。
+    def __call__(self, input: Sequence[str]) -> List[List[float]]:  # noqa: A002
+        texts = list(input) if not isinstance(input, str) else [input]
+        return self.embed_documents(texts)
+
     # -- 可观测性 --------------------------------------------------------
 
     @property

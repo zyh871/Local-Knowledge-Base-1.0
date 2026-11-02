@@ -129,6 +129,59 @@ backend/
 |------|------|------|----------|------|
 | GET  | `/share/{token}` | 无 | 30/min | 公开访问分享的对话 |
 
+### 身份与邀请
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET   | `/admin/users` | 管理员 | 用户列表 |
+| POST  | `/admin/users` | 管理员 | 创建账号 |
+| PATCH | `/admin/users/{user_id}` | 管理员 | 改显示名 / 全局角色 / 状态 / 密码 |
+| GET   | `/admin/invitations` | 管理员 | 邀请记录 |
+| POST  | `/admin/invitations` | 管理员 | 签发邀请（账号 or 团队），明文 token 只返回一次 |
+| POST  | `/invitations/accept` | 无 | 接受邀请并建号（一次性 + TTL） |
+
+### 团队空间
+
+角色层级 `owner > admin > editor > viewer`，鉴权统一折算为能力字符串
+（`team:read` / `content:write` / `project:publish` …）。对非成员一律 404，避免枚举。
+
+| 方法 | 路径 | 认证 | 最低角色 |
+|------|------|------|----------|
+| GET    | `/teams` | Bearer | 成员 |
+| POST   | `/teams` | Bearer | 任意登录用户（创建者为 owner） |
+| GET    | `/teams/{team_id}` | Bearer | viewer |
+| PATCH  | `/teams/{team_id}` | Bearer | admin |
+| DELETE | `/teams/{team_id}` | Bearer | owner |
+| GET    | `/teams/{team_id}/members` | Bearer | viewer |
+| POST   | `/teams/{team_id}/members` | Bearer | admin（同时用于改角色，upsert） |
+| DELETE | `/teams/{team_id}/members/{username}` | Bearer | admin |
+| POST   | `/teams/{team_id}/transfer` | Bearer | owner |
+| POST   | `/teams/{team_id}/invitations` | Bearer | admin |
+| GET    | `/teams/{team_id}/permissions` | Bearer | viewer |
+
+### 开源社区
+
+可见性：`published` 所有人可见；`draft` 仅团队成员可见（其他人拿 404）。
+`GET /community/projects` 默认只返回已发布；`?mine=1` 返回我创建/贡献的项目**含草稿**。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET    | `/community/projects` | 列表（`q` / `language` / `tag` / `sort` / `mine`） |
+| POST   | `/community/projects` | 创建（默认草稿，需 `project:write`） |
+| GET    | `/community/projects/{id}` | 详情 |
+| PATCH  | `/community/projects/{id}` | 编辑（`project:write` 或项目 maintainer） |
+| DELETE | `/community/projects/{id}` | 删除（`project:delete`） |
+| POST   | `/community/projects/{id}/publish` | 发布（`project:publish`） |
+| POST   | `/community/projects/{id}/unpublish` | 撤回为草稿 |
+| GET/POST | `/community/projects/{id}/contributors` | 贡献者列表 / 添加 |
+| DELETE | `/community/projects/{id}/contributors/{username}` | 移除贡献者 |
+| POST/DELETE | `/community/projects/{id}/star` | Star（幂等） |
+| POST/DELETE | `/community/projects/{id}/watch` | 关注项目（幂等） |
+| GET/POST | `/community/projects/{id}/comments` | 评论列表 / 发表 |
+| DELETE | `/community/projects/{id}/comments/{cid}` | 删除评论（作者或维护者） |
+| GET    | `/community/users/{username}` | 用户主页（项目、关注数） |
+| POST/DELETE | `/community/users/{username}/follow` | 关注 / 取关用户 |
+
 ## 核心模块说明
 
 ### RRF 融合 (`rrf_fusion.py`)

@@ -31,7 +31,11 @@ class TokenData(BaseModel):
 
 
 class User(BaseModel):
+    #: 不可变用户主键；env 管理员固定为 `usr_admin`
+    id: str = ""
     username: str
+    display_name: str = ""
+    global_role: str = "user"
     disabled: Optional[bool] = None
 
 
@@ -56,15 +60,39 @@ def _admin_hashed_password(cfg: SecuritySettings) -> str:
 
 
 def get_users_db() -> dict[str, dict]:
-    """返回用户表快照（bcrypt 哈希延迟生成）。"""
+    """兼容旧调用：返回 env 管理员快照。
+
+    真实用户表在 `identity.db`，由 `identity_service` 通过 provider 注入；
+    core 层不能直接依赖 repositories（分层约束）。
+    """
+    record = _env_admin_record()
+    return {record["username"]: record}
+
+
+#: 真实用户查询函数（由 main.py 在启动时注入）。
+#: 签名：`(identifier: str) -> Optional[dict]`，identifier 可以是 user_id 或 username。
+_user_provider = None
+
+
+def set_user_provider(provider) -> None:
+    global _user_provider
+    _user_provider = provider
+
+
+def _env_admin_record() -> dict:
     cfg = get_security_settings()
     return {
-        cfg.admin_username: {
-            "username": cfg.admin_username,
-            "hashed_password": _admin_hashed_password(cfg),
-            "disabled": False,
-        }
+        "id": "usr_admin",
+        "username": cfg.admin_username,
+        "hashed_password": _admin_hashed_password(cfg),
+        "display_name": "管理员",
+        "global_role": "admin",
+        "disabled": False,
     }
+
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str | bytes) -> bool:
@@ -80,9 +108,27 @@ def verify_password(plain_password: str, hashed_password: str | bytes) -> bool:
         return False
 
 
-def get_user(username: str) -> Optional[UserInDB]:
-    record = get_users_db().get(username)
-    return UserInDB(**record) if record else None
+def get_user(identifier: str) -> Optional[UserInDB]:
+    """按 user_id 或 username 查用户。
+
+    优先走注入的真实用户表；未注入或查不到时，回退到 env 管理员，
+    以保证未跑 lifespan 的测试与「单管理员」旧部署仍可登录。
+    """
+    if not identifier:
+        return None
+
+    if _user_provider is not None:
+        try:
+            record = _user_provider(identifier)
+        except Exception:  # noqa: BLE001 - 用户表故障不应让登录直接 500
+            record = None
+        if record:
+            return UserInDB(**record)
+
+    cfg = get_security_settings()
+    if identifier in (cfg.admin_username, "usr_admin"):
+        return UserInDB(**_env_admin_record())
+    return None
 
 
 def authenticate_user(username: str, password: str) -> Optional[UserInDB]:

@@ -111,6 +111,12 @@ class SimpleTFIDFEmbeddings:
             self._ready = True
         return self._embed(self._tokenize(text))
 
+    # chromadb 只把「可调用对象」当作真正的 embedding_function；
+    # 否则会静默回落到内置 ONNX 模型（首次使用要联网下 79 MB，且阻塞事件循环）。
+    def __call__(self, input):  # noqa: A002
+        texts = [input] if isinstance(input, str) else list(input)
+        return self.embed_documents(texts)
+
     def add_texts(self, texts: List[str]):
         if not self._ready:
             self._build_vocab(texts)

@@ -17,6 +17,7 @@ from fastapi import Depends, Request
 from app.core.config import Settings, get_settings
 from app.core.deps import get_redis_optional, get_rag_chain_dep
 from app.services.agent_service import AgentService
+from app.services.community_service import CommunityService
 from app.services.conversation_service import ConversationService
 from app.services.creation_service import CreationService
 from app.services.document_service import DocumentService
@@ -132,6 +133,11 @@ async def get_team_service(settings: SettingsDep) -> TeamService:
     return TeamService(settings=settings)
 
 
+async def get_community_service(settings: SettingsDep) -> CommunityService:
+    """社区用例（独立 `data/community.db`）。"""
+    return CommunityService(settings=settings)
+
+
 QAServiceDep = Annotated[QAService, Depends(get_qa_service)]
 DocumentServiceDep = Annotated[DocumentService, Depends(get_document_service)]
 ConversationServiceDep = Annotated[ConversationService, Depends(get_conversation_service)]
@@ -145,3 +151,4 @@ WorkflowServiceDep = Annotated[WorkflowService, Depends(get_workflow_service)]
 ModelServiceDep = Annotated[ModelService, Depends(get_model_service)]
 CreationServiceDep = Annotated[CreationService, Depends(get_creation_service)]
 TeamServiceDep = Annotated[TeamService, Depends(get_team_service)]
+CommunityServiceDep = Annotated[CommunityService, Depends(get_community_service)]

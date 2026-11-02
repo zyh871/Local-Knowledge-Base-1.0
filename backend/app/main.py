@@ -21,7 +21,9 @@ FastAPI 应用入口 —— 只负责**组装**，不含任何业务逻辑。
 from __future__ import annotations
 
 import asyncio
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, Optional
 
 from dotenv import load_dotenv
@@ -96,6 +98,24 @@ async def lifespan(app: FastAPI):
     global _redis_manager, _rag_chain, _qa_graph, _workflow_graph
 
     settings = get_settings()
+
+    # ---- 身份：初始化 users 表并注入查询 provider ----
+    # 失败不阻断启动：回退到 env 管理员，保证旧部署仍可登录。
+    try:
+        from app.core import security
+        from app.services import identity_service
+
+        identity_service.bootstrap_identity()
+        security.set_user_provider(identity_service.get_user_record)
+
+        from app.services.team_service import migrate_legacy_teams
+
+        migrated = migrate_legacy_teams()
+        logger.info(
+            f"身份数据已就绪（identity.db）；团队 user_id 回填 {migrated} 条"
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"身份初始化失败，回退到 env 管理员: {exc}")
 
     # ---- Redis：缓存 / 会话状态 / 限流 / 分布式锁 ----
     logger.info("正在连接 Redis ...")
@@ -285,6 +305,48 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     # 路由：api_prefix 默认为空，保持与 v3 完全一致的接口路径
     app.include_router(api_router, prefix=settings.api_prefix)
+
+    # ── 客户端模式：后端自己托管已构建的前端 ──────────────────────
+    # 桌面客户端只有一个进程，不能像生产部署那样靠 nginx 做 /api 反向代理。
+    # 这里做两件事：再挂一份 /api 前缀的同一组路由 + 把静态目录挂到根路径。
+    #
+    # 用环境变量而不是 Settings 字段，是为了让默认行为**完全不变**：
+    # 不设 SERVE_FRONTEND_DIR 时下面是死代码，接口路径集合与契约基线逐字节一致。
+    frontend_dir = os.getenv("SERVE_FRONTEND_DIR", "").strip()
+    if frontend_dir and Path(frontend_dir).is_dir():
+        from fastapi.responses import FileResponse
+        from fastapi.staticfiles import StaticFiles
+
+        # 前端 http.js 里的 API_BASE 是 '/api'，同源部署必须补这份前缀
+        app.include_router(api_router, prefix="/api")
+
+        root = Path(frontend_dir).resolve()
+        app.mount("/assets", StaticFiles(directory=root / "assets"), name="assets")
+        index_file = root / "index.html"
+
+        # ★ 浏览器导航必须交给前端路由，哪怕同名的 API 存在。
+        #   后端的兼容路由里有 GET /models、/documents…，浏览器直接打开
+        #   http://127.0.0.1:8000/models 会命中 API 并返回 401 JSON，
+        #   用户看到的就是一屏 {"detail":"Not authenticated"}。
+        #   判据用 Accept: text/html —— 只有导航会带它，fetch/XHR 不会。
+        @app.middleware("http")
+        async def _spa_fallback(request, call_next):  # type: ignore[no-untyped-def]
+            path = request.url.path
+            if (
+                request.method == "GET"
+                and "text/html" in request.headers.get("accept", "")
+                and not path.startswith(("/api/", "/assets/"))
+                and path not in ("/docs", "/redoc", "/openapi.json")
+            ):
+                candidate = (root / path.lstrip("/")).resolve()
+                is_real_file = candidate.is_file() and str(candidate).startswith(str(root))
+                if not is_real_file:
+                    return FileResponse(index_file)
+            return await call_next(request)
+
+        # 兜底静态挂载：让 "/" 这种不带 Accept: text/html 的请求也能拿到首页。
+        # 必须放在最后——前面注册的 API 路由优先级更高。
+        app.mount("/", StaticFiles(directory=root, html=True), name="spa")
 
     return app
 

@@ -17,7 +17,10 @@ class TokenData(BaseModel):
 
 
 class User(BaseModel):
+    id: str = ""
     username: str
+    display_name: str = ""
+    global_role: str = "user"
     disabled: Optional[bool] = None
 
 

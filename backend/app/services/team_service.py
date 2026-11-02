@@ -42,6 +42,7 @@ __all__ = [
     "ROLE_RANK",
     "ROLE_CAPABILITIES",
     "TeamService",
+    "migrate_legacy_teams",
 ]
 
 #: 角色层级。数字越大权限越高。
@@ -55,14 +56,24 @@ ROLE_RANK: dict[str, int] = {
 #: 各角色具备的能力。刻意用「能力」而非「角色」表达，
 #: 让未来的资源鉴权不依赖具体角色名。
 ROLE_CAPABILITIES: dict[str, set[str]] = {
-    "viewer": {"team:read", "content:read"},
-    "editor": {"team:read", "content:read", "content:write"},
+    "viewer": {"team:read", "content:read", "project:read"},
+    "editor": {
+        "team:read",
+        "content:read",
+        "content:write",
+        "project:read",
+        "project:write",
+    },
     "admin": {
         "team:read",
         "team:update",
         "team:manage_members",
         "content:read",
         "content:write",
+        "project:read",
+        "project:write",
+        "project:publish",
+        "project:manage_members",
     },
     "owner": {
         "team:read",
@@ -72,6 +83,11 @@ ROLE_CAPABILITIES: dict[str, set[str]] = {
         "team:transfer",
         "content:read",
         "content:write",
+        "project:read",
+        "project:write",
+        "project:publish",
+        "project:manage_members",
+        "project:delete",
     },
 }
 
@@ -85,6 +101,13 @@ _USERNAME_MAX = 64
 
 def _rank(role: str) -> int:
     return ROLE_RANK.get(role, 0)
+
+
+def _resolve_uid(username: str) -> str:
+    """username → 不可变 user_id（旧数据/测试会惰性建影子账号）。"""
+    from app.services.identity_service import resolve_user_id
+
+    return resolve_user_id(username)
 
 
 class TeamService:
@@ -102,7 +125,10 @@ class TeamService:
         return team
 
     def _member_or_404(self, team_id: str, username: str) -> dict[str, Any]:
-        member = repo.get_member(team_id, username)
+        member = repo.get_member_by_user_id(team_id, _resolve_uid(username))
+        if not member:
+            # 兼容尚未回填 user_id 的旧行
+            member = repo.get_member(team_id, username)
         if not member:
             # 与「团队不存在」同码，避免枚举探测
             raise NotFoundError("团队不存在或无权访问")
@@ -169,6 +195,7 @@ class TeamService:
     def _member_out(item: dict[str, Any]) -> dict[str, Any]:
         return {
             "username": item["username"],
+            "user_id": item.get("user_id") or "",
             "role": item["role"],
             "joined_at": item["joined_at"],
         }
@@ -181,14 +208,16 @@ class TeamService:
         self, *, name: str, description: str, owner: str
     ) -> dict[str, Any]:
         owner = self._clean_username(owner)
+        owner_id = _resolve_uid(owner)
         team = repo.create_team(
             name=self._clean_name(name),
             description=self._clean_description(description),
             owner=owner,
+            owner_id=owner_id,
         )
         # 建团队与写入所有者必须成对出现：失败则回滚团队，不留无主团队
         try:
-            repo.upsert_member(team["id"], owner, "owner")
+            repo.upsert_member(team["id"], owner, "owner", user_id=owner_id)
         except Exception:
             repo.delete_team(team["id"])
             raise
@@ -196,7 +225,10 @@ class TeamService:
         return self.get_team(team["id"], owner)
 
     def list_teams(self, username: str) -> list[dict[str, Any]]:
-        return [self._out(item) for item in repo.list_teams_for_user(username)]
+        return [
+            self._out(item)
+            for item in repo.list_teams_for_user_id(_resolve_uid(username))
+        ]
 
     def get_team(self, team_id: str, username: str) -> dict[str, Any]:
         team = self._require_team(team_id)
@@ -270,7 +302,9 @@ class TeamService:
                 "管理员只能邀请编辑或查看者，不能授予或撤销管理员"
             )
 
-        member = repo.upsert_member(team_id, target, role)
+        member = repo.upsert_member(
+            team_id, target, role, user_id=_resolve_uid(target)
+        )
         action = "已更新" if existing else "已加入"
         logger.info(f"团队成员{action}: team={team_id} {target} role={role} by={actor}")
         return self._member_out(member)
@@ -290,9 +324,61 @@ class TeamService:
         if actor_member["role"] == "admin" and existing["role"] == "admin":
             raise PermissionDeniedError("管理员不能移除其他管理员")
 
-        repo.remove_member(team_id, target)
+        target_id = _resolve_uid(target)
+        if not repo.remove_member_by_user_id(team_id, target_id):
+            repo.remove_member(team_id, target)
         logger.info(f"团队成员已移除: team={team_id} {target} by={actor}")
         return {"success": True, "team_id": team_id, "username": target}
+
+    # ------------------------------------------------------------------
+    #  所有权转让 / 团队邀请
+    # ------------------------------------------------------------------
+
+    def transfer_owner(self, team_id: str, actor: str, target: str) -> dict[str, Any]:
+        """显式转让：原 owner 降为 admin，目标成员升为 owner。"""
+        self._require_role(team_id, actor, "owner")
+        target = self._clean_username(target)
+        if target == actor:
+            raise ValidationError("不能把所有权转让给自己")
+
+        target_member = self._member_or_404(team_id, target)
+        actor_member = self._member_or_404(team_id, actor)
+        target_id = target_member.get("user_id") or _resolve_uid(target)
+        actor_id = actor_member.get("user_id") or _resolve_uid(actor)
+
+        repo.transfer_owner(
+            team_id=team_id,
+            owner_id=target_id,
+            owner_username=target,
+            actor_user_id=actor_id,
+        )
+        logger.info(f"团队所有权已转让: team={team_id} {actor} -> {target}")
+        return self.get_team(team_id, actor)
+
+    def create_team_invitation(
+        self,
+        team_id: str,
+        actor: str,
+        *,
+        role: str = "viewer",
+        ttl_hours: int = 72,
+    ) -> dict[str, Any]:
+        """生成团队邀请链接（登录后加入），需要 admin 及以上。"""
+        self._require_role(team_id, actor, "admin")
+        role = (role or "viewer").strip().lower()
+        if role not in _ASSIGNABLE_ROLES:
+            raise ValidationError(
+                f"角色只能是 {' / '.join(_ASSIGNABLE_ROLES)}"
+            )
+        from app.services import identity_service
+
+        return identity_service.create_invitation(
+            kind="team",
+            team_id=team_id,
+            role=role,
+            created_by=actor,
+            ttl_hours=ttl_hours,
+        )
 
     # ------------------------------------------------------------------
     #  权限
@@ -307,3 +393,27 @@ class TeamService:
             # 排序保证响应稳定，便于前端做 diff 与快照测试
             "permissions": sorted(caps),
         }
+
+
+def migrate_legacy_teams() -> int:
+    """把旧的 username 关联回填成 user_id（幂等）。
+
+    只需在启动时跑一次：旧库的 teams.owner / team_members.username
+    没有 user_id，权限校验会退化到按 username 查，虽然能用但无法改名。
+    """
+    from app.services.identity_service import resolve_user_id
+
+    updated = 0
+    for team in repo.list_all_teams():
+        if not team.get("owner_id"):
+            repo.set_team_owner_id(team["id"], resolve_user_id(team["owner"]))
+            updated += 1
+    for member in repo.list_all_members():
+        if not member.get("user_id"):
+            repo.set_member_user_id(
+                member["team_id"],
+                member["username"],
+                resolve_user_id(member["username"]),
+            )
+            updated += 1
+    return updated

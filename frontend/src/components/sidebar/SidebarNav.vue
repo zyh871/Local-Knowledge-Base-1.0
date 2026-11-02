@@ -49,6 +49,37 @@
       </svg>
       智鲸创作
     </button>
+
+    <div class="side-links">
+      <button
+        type="button"
+        :class="['side-link', { on: route.path.startsWith('/teams') }]"
+        @click="router.push('/teams')"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+        团队空间
+      </button>
+      <button
+        type="button"
+        :class="['side-link', { on: route.path.startsWith('/community') }]"
+        @click="router.push('/community')"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+          <circle cx="12" cy="12" r="3" />
+          <circle cx="5" cy="6" r="2.2" />
+          <circle cx="19" cy="6" r="2.2" />
+          <circle cx="5" cy="18" r="2.2" />
+          <circle cx="19" cy="18" r="2.2" />
+          <path d="M7 7.5l3 2.5M17 7.5l-3 2.5M7 16.5l3-2.5M17 16.5l-3-2.5" />
+        </svg>
+        开源社区
+      </button>
+    </div>
   </div>
 </template>
 
@@ -76,13 +107,16 @@ const TABS = [
 
 /**
  * 只在 /chat 与 /work 时高亮分段。
- * 创作页不属于这两个"场地"，它是 新对话 下方的一个独立入口 ——
- * 硬把它算进某个分段会让用户以为创作属于对话。
+ * 创作页、团队空间、开源社区都不属于这两个"场地"，它们是独立入口 ——
+ * 硬把它们算进某个分段会让用户以为这些页面属于对话。
+ *
+ * 判据必须是「命中 /chat」而不是「兜底 chat」：后者会让新加的
+ * /teams、/community 也高亮"对话"。
  */
 const activeTab = computed(() => {
   if (route.path.startsWith('/work')) return 'work'
-  if (route.path.startsWith('/create')) return ''
-  return 'chat'
+  if (route.path.startsWith('/chat')) return 'chat'
+  return ''
 })
 
 const primaryLabel = computed(
@@ -194,5 +228,42 @@ function goCreate() {
 .side-create.on {
   color: var(--color-primary);
   font-weight: 600;
+}
+
+/* 入口组：智鲸创作 / 团队空间 / 开源社区
+   三者都是「去另一个地方」，与上面的会话列表性质不同，
+   所以共用一套样式，不各自发明一套按钮。 */
+.side-links {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 2px;
+}
+
+.side-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-md);
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.side-link:hover {
+  background-color: var(--color-hover);
+  color: var(--color-text-primary);
+}
+
+.side-link.on {
+  color: var(--color-primary);
+  font-weight: 600;
+  background-color: var(--color-primary-lighter);
+}
+
+.side-link svg {
+  flex-shrink: 0;
 }
 </style>

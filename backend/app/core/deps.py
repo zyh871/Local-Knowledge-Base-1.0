@@ -17,7 +17,11 @@ from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import RateLimitError, UnauthorizedError
+from app.core.exceptions import (
+    PermissionDeniedError,
+    RateLimitError,
+    UnauthorizedError,
+)
 from app.core.logging import get_trace_id
 from app.core.redis import check_rate_limit
 from app.core.security import UserInDB, decode_access_token, get_user, require_active
@@ -78,10 +82,15 @@ QAGraphDep = Annotated[Any, Depends(get_qa_graph)]
 
 def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> UserInDB:
     payload = decode_access_token(token)
-    username = payload.get("sub")
-    if not username:
+    sub = payload.get("sub")
+    legacy_username = payload.get("username")
+    if not sub and not legacy_username:
         raise UnauthorizedError("无法验证凭据")
-    user = get_user(str(username))
+
+    # 新令牌 sub = user_id；旧令牌 sub = username。两者都要能解析。
+    user = get_user(str(sub)) if sub else None
+    if user is None and legacy_username:
+        user = get_user(str(legacy_username))
     if user is None:
         raise UnauthorizedError("无法验证凭据")
     return user
@@ -96,6 +105,18 @@ def get_current_active_user(
 CurrentUser = Annotated[UserInDB, Depends(get_current_active_user)]
 
 
+def get_admin_user(
+    current_user: Annotated[UserInDB, Depends(get_current_active_user)],
+) -> UserInDB:
+    """部署管理员（全局角色 admin）才能访问的依赖。"""
+    if current_user.global_role != "admin":
+        raise PermissionDeniedError("需要部署管理员权限")
+    return current_user
+
+
+AdminUser = Annotated[UserInDB, Depends(get_admin_user)]
+
+
 def get_optional_user(
     token: Annotated[Optional[str], Depends(oauth2_scheme_optional)] = None,
 ) -> Optional[UserInDB]:
@@ -104,8 +125,12 @@ def get_optional_user(
         return None
     try:
         payload = decode_access_token(token)
-        username = payload.get("sub")
-        return get_user(str(username)) if username else None
+        sub = payload.get("sub")
+        legacy_username = payload.get("username")
+        user = get_user(str(sub)) if sub else None
+        if user is None and legacy_username:
+            user = get_user(str(legacy_username))
+        return user
     except Exception:  # noqa: BLE001
         return None
 

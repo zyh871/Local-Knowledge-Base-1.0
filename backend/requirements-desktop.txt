@@ -1,0 +1,9 @@
+# 桌面窗口组件（可选）
+#
+# 只给「客户端」用：后端本身不需要它。装上之后 start.ps1 会打开一个
+# WebView2 原生窗口，而不是调默认浏览器；装不上也能用（自动退回 Edge 应用模式）。
+#
+# Windows 上 pywebview 依赖 WebView2 运行时（Win10/11 随 Edge 自带）；
+# 没有的话它会退化成 IE 内核，Vue 3 会白屏 —— 所以 desktop_app.py 会先探测，
+# 探测不到就直接走 Edge 的 --app 模式。
+pywebview>=5.4

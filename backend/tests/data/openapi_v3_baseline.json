@@ -1,4 +1,15 @@
 {
+ "/admin/invitations": [
+  "get",
+  "post"
+ ],
+ "/admin/users": [
+  "get",
+  "post"
+ ],
+ "/admin/users/{user_id}": [
+  "patch"
+ ],
  "/agent/capabilities": [
   "get"
  ],
@@ -15,6 +26,50 @@
   "post"
  ],
  "/ask/stream": [
+  "post"
+ ],
+ "/community/projects": [
+  "get",
+  "post"
+ ],
+ "/community/projects/{project_id}": [
+  "delete",
+  "get",
+  "patch"
+ ],
+ "/community/projects/{project_id}/comments": [
+  "get",
+  "post"
+ ],
+ "/community/projects/{project_id}/comments/{comment_id}": [
+  "delete"
+ ],
+ "/community/projects/{project_id}/contributors": [
+  "get",
+  "post"
+ ],
+ "/community/projects/{project_id}/contributors/{username}": [
+  "delete"
+ ],
+ "/community/projects/{project_id}/publish": [
+  "post"
+ ],
+ "/community/projects/{project_id}/star": [
+  "delete",
+  "post"
+ ],
+ "/community/projects/{project_id}/unpublish": [
+  "post"
+ ],
+ "/community/projects/{project_id}/watch": [
+  "delete",
+  "post"
+ ],
+ "/community/users/{username}": [
+  "get"
+ ],
+ "/community/users/{username}/follow": [
+  "delete",
   "post"
  ],
  "/conversations": [
@@ -87,6 +142,9 @@
  "/health": [
   "get"
  ],
+ "/invitations/accept": [
+  "post"
+ ],
  "/long-text": [
   "post"
  ],
@@ -135,6 +193,9 @@
   "get",
   "patch"
  ],
+ "/teams/{team_id}/invitations": [
+  "post"
+ ],
  "/teams/{team_id}/members": [
   "get",
   "post"
@@ -144,6 +205,9 @@
  ],
  "/teams/{team_id}/permissions": [
   "get"
+ ],
+ "/teams/{team_id}/transfer": [
+  "post"
  ],
  "/token": [
   "post"

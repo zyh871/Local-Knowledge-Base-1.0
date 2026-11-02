@@ -53,6 +53,12 @@ onMounted(() => {
   --color-border: #E4E8ED;
   --color-border-light: #EEF0F3;
 
+  /* 悬停底色 / 错误红：过去只被引用、从未定义，
+     `var(--color-hover)` 属于「无效于计算值」→ 回退成 transparent，
+     于是侧栏、用户菜单、会话列表的 hover 全部看不见。这里补齐。 */
+  --color-hover: #EDF0F4;
+  --color-error: #C45050;
+
   --color-text-primary: #1A2332;
   --color-text-secondary: #5F6B7A;
   --color-text-tertiary: #8C95A1;
@@ -80,6 +86,9 @@ onMounted(() => {
   --color-surface-secondary: #232D3B;
   --color-border: #2E3A4A;
   --color-border-light: #262F3D;
+
+  --color-hover: #26313F;
+  --color-error: #D97070;
 
   --color-text-primary: #E8EEF4;
   --color-text-secondary: #9AA8B8;

@@ -360,13 +360,16 @@
           </header>
 
           <div v-if="assetItems.length" class="asset-grid">
-            <button
+            <div
               v-for="item in assetItems"
               :key="item.id"
-              type="button"
               class="asset-card"
+              role="button"
+              tabindex="0"
               :title="item.prompt"
               @click="openAsset(item)"
+              @keydown.enter.prevent="openAsset(item)"
+              @keydown.space.prevent="openAsset(item)"
             >
               <img
                 v-if="item.kind !== 'video' && mediaUrls[item.id]"
@@ -398,7 +401,25 @@
                 </svg>
               </span>
               <span class="asset-badge">{{ item.kind === 'video' ? '视频' : '图片' }}</span>
-            </button>
+
+              <!-- 删除：卡片本身是整块可点的，所以这里必须 stop，
+                   否则点删除会先打开大图预览 -->
+              <button
+                type="button"
+                class="asset-del"
+                :disabled="deletingId === item.id"
+                :title="deletingId === item.id ? '删除中…' : '删除这条资产'"
+                aria-label="删除资产"
+                @click.stop="removeAsset(item)"
+              >
+                <svg v-if="deletingId !== item.id" width="14" height="14" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" />
+                  <path d="M10 11v6M14 11v6" />
+                </svg>
+                <span v-else class="asset-del-spin" aria-hidden="true"></span>
+              </button>
+            </div>
           </div>
           <p v-else class="asset-empty">
             还没有{{ assetTab === 'video' ? '视频' : '图片' }}作品。在上方描述画面，生成后会自动收进这里。
@@ -434,6 +455,11 @@
             <button class="mini-btn" @click="download(preview)">下载</button>
             <button class="mini-btn" @click="copyPrompt(preview)">复制提示词</button>
             <button class="mini-btn" @click="reusePrompt(preview)">再画一次</button>
+            <button
+              class="mini-btn is-danger"
+              :disabled="deletingId === preview.id"
+              @click="removeAsset(preview)"
+            >{{ deletingId === preview.id ? '删除中…' : '删除' }}</button>
             <button class="mini-btn" @click="preview = null">关闭</button>
           </div>
         </div>
@@ -631,6 +657,39 @@ watch(
 function openAsset(item) {
   preview.value = item
   if (item.media_url) ensureMedia(item.id)
+}
+
+/** 正在删除的资产 id：用来禁用按钮并显示转圈，避免连点两次 */
+const deletingId = ref('')
+
+/**
+ * 删除一条资产。
+ *
+ * 后端 DELETE 会连磁盘文件一起删（不可恢复），所以这里先确认一次。
+ * 成功后就地移除，不等下一次 loadHistory —— 否则用户会看到自己刚删的东西
+ * 还挂在墙上，以为没成功又点一遍。
+ */
+async function removeAsset(item) {
+  if (!item?.id || deletingId.value) return
+  const kindLabel = item.kind === 'video' ? '视频' : '图片'
+  const hint = (item.prompt || '').trim().slice(0, 40)
+  const ok = window.confirm(
+    `删除这条${kindLabel}？${hint ? `\n\n「${hint}${item.prompt.length > 40 ? '…' : ''}」` : ''}\n\n文件会从本机一并删除，无法恢复。`
+  )
+  if (!ok) return
+
+  deletingId.value = item.id
+  try {
+    await creationApi.remove(item.id)
+    releaseMedia(item.id)
+    history.value = history.value.filter((a) => a.id !== item.id)
+    if (preview.value?.id === item.id) preview.value = null
+    error.value = ''
+  } catch (e) {
+    error.value = e.message || '删除失败，请稍后重试'
+  } finally {
+    deletingId.value = ''
+  }
 }
 
 const canGenerate = computed(
@@ -1618,6 +1677,77 @@ onUnmounted(() => {
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
   background-color: var(--color-surface-secondary);
+  /* 卡片现在是 div（里面要放删除按钮，button 不能嵌套 button） */
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.asset-card:hover,
+.asset-card:focus-visible {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-alpha, rgba(26, 74, 122, 0.14));
+}
+
+/* 删除按钮：默认半透明淡出，悬停/键盘聚焦时才显形；
+   触摸设备没有 hover，直接常显 */
+.asset-del {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  background-color: rgba(17, 24, 32, 0.55);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 0.15s ease, transform 0.15s ease, background-color 0.15s ease;
+  cursor: pointer;
+}
+
+.asset-card:hover .asset-del,
+.asset-card:focus-within .asset-del,
+.asset-del:focus-visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.asset-del:hover:not(:disabled) {
+  background-color: #c0392b;
+}
+
+.asset-del:disabled {
+  cursor: progress;
+  opacity: 1;
+  transform: scale(1);
+}
+
+.asset-del-spin {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: asset-del-rotate 0.7s linear infinite;
+}
+
+@keyframes asset-del-rotate {
+  to { transform: rotate(360deg); }
+}
+
+/* 触摸屏没有 hover，删除按钮不能藏着 */
+@media (hover: none) {
+  .asset-del {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .asset-card img,
@@ -1864,6 +1994,17 @@ onUnmounted(() => {
 .mini-btn:hover {
   border-color: var(--color-primary);
   color: var(--color-primary);
+}
+
+/* 危险操作：删除。悬停时转红，和「下载/复制」这类安全动作区分开 */
+.mini-btn.is-danger:hover:not(:disabled) {
+  border-color: #c0392b;
+  color: #c0392b;
+}
+
+.mini-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ===== 侧栏 ===== */

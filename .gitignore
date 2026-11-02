@@ -55,3 +55,19 @@ _pyc*/
 _pyf*/
 _pyt*/
 .verify-shots*/
+
+# 打包 / 构建产物（体积大或为重复副本，不入库）
+client_build/
+landing/dist/
+landing/download/
+landing/shots/
+landing/_shots/
+frontend/_shots/
+*.genie
+
+# 隧道临时文件（URL 每次启动会变）
+deploy/localtunnel/url.txt
+
+# 第三方随附库 / 临时测试二进制
+tools/pylibs/
+tools/_t.exe

@@ -31,6 +31,25 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/teams',
+    name: 'Teams',
+    component: () => import('../views/TeamsView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/community',
+    name: 'Community',
+    component: () => import('../views/CommunityView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    // 邀请链接落地页：被邀请人此时还没有账号，必须是公开路由
+    path: '/invite/:token',
+    name: 'Invite',
+    component: () => import('../views/InviteView.vue'),
+    meta: { public: true }
+  },
+  {
     path: '/shared/:token',
     name: 'Shared',
     component: () => import('../views/SharedView.vue'),

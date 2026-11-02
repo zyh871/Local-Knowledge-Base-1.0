@@ -1,0 +1,4 @@
+NAME=智鲸 AI 产品介绍页
+VERSION=1.0.0
+BUNDLE=zhijing-landing
+PLATFORM=windows

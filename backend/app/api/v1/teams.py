@@ -14,14 +14,17 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import TeamServiceDep
 from app.core.deps import CurrentUser, rate_limit
+from app.schemas.identity import InvitationCreated
 from app.schemas.team import (
     MemberAdd,
     MemberOut,
     PermissionsOut,
     TeamCreate,
     TeamDetail,
+    TeamInvitationCreate,
     TeamOut,
     TeamUpdate,
+    TransferRequest,
 )
 
 router = APIRouter()
@@ -141,6 +144,47 @@ async def remove_member(
     _: None = Depends(rate_limit("teams")),
 ) -> dict:
     return service.remove_member(team_id, current_user.username, username)
+
+
+@router.post(
+    "/teams/{team_id}/transfer",
+    response_model=TeamDetail,
+    summary="转让所有权（owner）",
+)
+async def transfer_owner(
+    team_id: str,
+    payload: TransferRequest,
+    current_user: CurrentUser,
+    service: TeamServiceDep,
+    _: None = Depends(rate_limit("teams")),
+) -> TeamDetail:
+    return TeamDetail(
+        **service.transfer_owner(
+            team_id, current_user.username, payload.username
+        )
+    )
+
+
+@router.post(
+    "/teams/{team_id}/invitations",
+    response_model=InvitationCreated,
+    summary="生成团队邀请链接（admin+）",
+)
+async def create_team_invitation(
+    team_id: str,
+    payload: TeamInvitationCreate,
+    current_user: CurrentUser,
+    service: TeamServiceDep,
+    _: None = Depends(rate_limit("teams")),
+) -> InvitationCreated:
+    return InvitationCreated(
+        **service.create_team_invitation(
+            team_id,
+            current_user.username,
+            role=payload.role,
+            ttl_hours=payload.ttl_hours,
+        )
+    )
 
 
 @router.get(
