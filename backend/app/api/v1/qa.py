@@ -138,7 +138,7 @@ async def ask_image(
     svc: QAServiceDep,
     file: UploadFile = File(...),
     question: str = Form(""),
-    conversation_id: str = Form("default"),
+    conversation_id: str = Form(""),
     _: None = Depends(rate_limit("ask_image")),
 ):
     trace_id = get_trace_id(request)
@@ -164,7 +164,8 @@ async def ask_image(
             filename=file.filename,
             contents=contents,
             question=question,
-            conversation_id=conversation_id or "default",
+            # 缺省 id 由 service 按用户派生，不在这里回落到共享的 "default"。
+            conversation_id=conversation_id,
             username=current_user.username,
             trace_id=trace_id,
         ),

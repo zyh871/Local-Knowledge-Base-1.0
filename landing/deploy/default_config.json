@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "name": "标准客户端（本机探测优先）",
+  "issued_at": "2026-11-04",
+  "env": {},
+  "search": {},
+  "endpoints": [],
+  "_readme": [
+    "这份文件会被打包进安装包（config/profile.json），安装时自动写入 backend/.env。",
+    "env: 只补缺失的键，已有的键不会被覆盖（升级时保留用户的密码与配置）。",
+    "search: 只在本地没有搜索配置时写入，provider 可选 duckduckgo / tavily / serper。",
+    "endpoints: 只在本地没有任何自定义模型时写入，用于预置公司统一的模型服务。",
+    "env 里不要写 ADMIN_PASSWORD，除非确实要给所有机器设同一个初始密码。",
+    "完整说明见 docs/INSTALLER_AUTOCONFIG.md。"
+  ]
+}

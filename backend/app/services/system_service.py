@@ -69,15 +69,16 @@ class SystemService:
 
             store = get_vectorstore()
             if store and getattr(store, "vectorstore", None):
-                info = store.vectorstore.get(include=[])
-                details["chroma"] = {
-                    "ok": True,
-                    "chunks": len(info.get("ids") or []) if info else 0,
-                }
+                # ⚠️ 不要在这里 `vectorstore.get(include=[])`：那是**全量扫描**，
+                # 902 个分块就要 94.7ms，语料涨到十万级探针会直接超时、
+                # 被编排层判死并反复重启。存活检查只需要"集合能打开"。
+                details["chroma"] = {"ok": True, "initialized": True}
             else:
-                details["chroma"] = {"ok": True, "note": "not_initialized"}
+                details["chroma"] = {"ok": True, "initialized": False}
         except Exception as exc:  # noqa: BLE001
-            details["chroma"] = {"ok": False, "error": str(exc)}
+            # 不把异常原文回吐：可能含本地路径。日志里带 trace_id。
+            logger.warning(f"chroma 健康检查失败: {exc}")
+            details["chroma"] = {"ok": False, "initialized": False}
             details["status"] = "degraded"
 
     def _check_sqlite(self, details: dict[str, Any]) -> None:
@@ -85,13 +86,13 @@ class SystemService:
             from app.memory.conversation_memory import _meta_connect
 
             conn = _meta_connect()
-            row = conn.execute("SELECT COUNT(*) AS cnt FROM conversations").fetchone()
-            details["sqlite_conversations"] = {
-                "ok": True,
-                "conversations": row["cnt"] if row else 0,
-            }
+            # 只探"能读"，不 COUNT(*)（大库上是全表扫）。
+            conn.execute("SELECT 1 FROM conversations LIMIT 1").fetchone()
+            # 计数属于运营指标，放 `/stats`（需登录），不在匿名探针里暴露规模。
+            details["sqlite_conversations"] = {"ok": True}
         except Exception as exc:  # noqa: BLE001
-            details["sqlite_conversations"] = {"ok": False, "error": str(exc)}
+            logger.warning(f"sqlite 健康检查失败: {exc}")
+            details["sqlite_conversations"] = {"ok": False}
             details["status"] = "degraded"
 
     def _check_redis(self, details: dict[str, Any]) -> None:
@@ -104,6 +105,11 @@ class SystemService:
             }
             if fallback:
                 details["redis"]["note"] = "进程内降级：多 worker 下限流/锁/缓存不共享"
+                # 生产环境里静默降级很危险：
+                # 多 worker 下限流额度变成 N 倍、`vectorstore:rebuild` 锁每进程一把
+                # （可能并发重建同一个 Chroma → 索引损坏）。必须让编排层看得见。
+                if self.settings.env == "prod":
+                    details["status"] = "degraded"
         else:
             details["redis"] = {"ok": False, "error": "not_initialized"}
 

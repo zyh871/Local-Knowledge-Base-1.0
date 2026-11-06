@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.core.exceptions import PermissionDeniedError
 from app.core.logging import get_logger
 from app.graph.nodes import Deps
 from app.graph.state import RAGState
@@ -19,8 +20,10 @@ def persist(state: RAGState, deps: Deps) -> dict:
         logger.debug("需要澄清的轮次，跳过记忆写回")
         return {}
 
-    conversation_id = state.get("conversation_id") or "default"
     username = state.get("username") or ""
+    # 不回落到全局字面量 "default" —— 那会让所有"没传 id"的用户共用同一行历史。
+    # 这里与 `qa_service.resolve_conversation_id()` 用同一条派生规则。
+    conversation_id = state.get("conversation_id") or f"default:{username or 'anon'}"
     question = state.get("question", "")
     answer = state.get("answer", "")
 
@@ -31,7 +34,22 @@ def persist(state: RAGState, deps: Deps) -> dict:
     try:
         from app.memory import save_context
 
-        save_context(conversation_id, question, answer, locked=bool(state.get("locked")))
+        # username 必须传下去：写侧要靠它做归属校验并给消息落作者，
+        # 否则 `conversation_messages` 里谁写的永远查不出来。
+        save_context(
+            conversation_id,
+            question,
+            answer,
+            locked=bool(state.get("locked")),
+            username=username,
+        )
+    except PermissionDeniedError:
+        # 归属校验在 `qa_service` 入口已经拦过一次；走到这里说明状态里的
+        # conversation_id 与请求时的不是同一个（或并发下被人抢先认领）。
+        # 不抛：此时回答已经产出，抛出去只会让用户丢掉已经生成的答案。
+        logger.error(
+            f"拒绝写入他人会话（conversation_id={conversation_id} username={username}）"
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"写回对话记忆失败: {exc}")
 

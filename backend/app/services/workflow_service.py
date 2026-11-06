@@ -465,13 +465,15 @@ class WorkflowService:
     def _assert_owner(
         workspace: dict[str, Any], username: str, *, action: str
     ) -> None:
-        """读是全局的，改/删只归创建者。
+        """工作区**读是全局的**（便于协作），改/删只归创建者。
 
-        当前系统只有 `ADMIN_USERNAME` 单账号（无注册端点），这条校验实际不生效 ——
-        但字段与判定先落，避免以后加多用户时改表改逻辑。
+        判定必须 fail-closed：owner 为空或调用方无身份都拒绝。
+        旧写法 `if owner and username and owner != username` 在遗留数据
+        （owner 为空）上会对所有人放行。
         """
-        owner = workspace.get("owner") or ""
-        if owner and username and owner != username:
+        owner = str(workspace.get("owner") or "").strip()
+        actor = str(username or "").strip()
+        if not owner or not actor or owner != actor:
             raise PermissionDeniedError(f"只有创建者可以{action}该工作区")
 
     # ------------------------------------------------------------------
@@ -511,21 +513,40 @@ class WorkflowService:
     def list_runs(
         self,
         *,
+        username: str = "",
+        is_admin: bool = False,
         workspace_id: Optional[str] = None,
         status: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
     ) -> dict[str, Any]:
+        """任务列表：管理员看全部，普通用户只看自己的。"""
         self._ensure_enabled()
-        runs = repo.list_runs(
-            workspace_id=workspace_id, status=status, limit=limit, offset=offset
-        )
-        return {"runs": runs, "total": len(runs)}
 
-    def get_run(self, *, run_id: str) -> dict[str, Any]:
+        # 非管理员且没有身份 → 返回空，绝不能退化成「不加 username 过滤」
+        if not is_admin and not str(username or "").strip():
+            return {"runs": [], "total": 0}
+
+        owner_filter = None if is_admin else username
+        runs = repo.list_runs(
+            username=owner_filter,
+            workspace_id=workspace_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        total = repo.count_runs(
+            username=owner_filter, workspace_id=workspace_id, status=status
+        )
+        return {"runs": runs, "total": total}
+
+    def get_run(
+        self, *, run_id: str, username: str, is_admin: bool = False
+    ) -> dict[str, Any]:
         run = repo.get_run(run_id)
         if not run:
             raise NotFoundError("任务不存在")
+        self._require_run_read(run, username=username, is_admin=is_admin)
         return self._with_files(run)
 
     def update_run(
@@ -539,8 +560,7 @@ class WorkflowService:
         run = repo.get_run(run_id, with_steps=False)
         if not run:
             raise NotFoundError("任务不存在")
-        if run.get("username") and username and run["username"] != username:
-            raise PermissionDeniedError("只有创建者可以修改该任务")
+        self._require_owner(run, username, "修改")
 
         patch: dict[str, Any] = {}
         if title is not None:
@@ -557,8 +577,7 @@ class WorkflowService:
         run = repo.get_run(run_id, with_steps=False)
         if not run:
             raise NotFoundError("任务不存在")
-        if run.get("username") and username and run["username"] != username:
-            raise PermissionDeniedError("只有创建者可以删除该任务")
+        self._require_owner(run, username, "删除")
 
         paths = repo.delete_run(run_id)
         for path in paths:
@@ -580,8 +599,7 @@ class WorkflowService:
         run = repo.get_run(run_id, with_steps=False)
         if not run:
             raise NotFoundError("任务不存在")
-        if run.get("username") and username and run["username"] != username:
-            raise PermissionDeniedError("只有创建者可以为该任务添加文件")
+        self._require_owner(run, username, "添加文件")
 
         cfg = self.config
         max_bytes = cfg.max_file_mb * 1024 * 1024
@@ -657,17 +675,20 @@ class WorkflowService:
         finally:
             _safe_unlink(str(tmp))
 
-    def list_files(self, *, run_id: str) -> dict[str, Any]:
-        if not repo.get_run(run_id, with_steps=False):
+    def list_files(
+        self, *, run_id: str, username: str, is_admin: bool = False
+    ) -> dict[str, Any]:
+        run = repo.get_run(run_id, with_steps=False)
+        if not run:
             raise NotFoundError("任务不存在")
+        self._require_run_read(run, username=username, is_admin=is_admin)
         return {"files": repo.list_run_files(run_id)}
 
     def delete_file(self, *, run_id: str, file_id: str, username: str) -> dict[str, Any]:
         run = repo.get_run(run_id, with_steps=False)
         if not run:
             raise NotFoundError("任务不存在")
-        if run.get("username") and username and run["username"] != username:
-            raise PermissionDeniedError("只有创建者可以移除该文件")
+        self._require_owner(run, username, "移除")
 
         record = repo.get_run_file(file_id)
         if not record or record["run_id"] != run_id:
@@ -677,11 +698,90 @@ class WorkflowService:
             _safe_unlink(path)
         return {"success": True}
 
-    def resolve_file_path(self, *, file_id: str) -> tuple[str, str]:
-        """返回 (落盘路径, 原始文件名) 供下载端点使用。"""
+    #: 可以内联预览的文本类扩展名
+    _TEXT_EXTENSIONS = {
+        ".md", ".markdown", ".txt", ".json", ".yaml", ".yml", ".toml", ".ini",
+        ".log", ".csv", ".py", ".js", ".mjs", ".ts", ".vue", ".html", ".htm",
+        ".css", ".sql", ".xml", ".sh", ".bat", ".ps1",
+    }
+    _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"}
+
+    #: 预览最多读这么多字节。再大就不是「看一眼」了，提示用户下载。
+    _PREVIEW_MAX_BYTES = 2 * 1024 * 1024
+
+    def preview_file(
+        self, *, file_id: str, username: str, is_admin: bool = False
+    ) -> dict[str, Any]:
+        """返回可直接渲染的预览数据。
+
+        - 文本：`kind=text` + `text`（超过上限截断并标记 truncated）
+        - 图片：`kind=image`，内容另行通过 raw 端点取
+        - 其它：`kind=binary`，只给元信息
+        """
+        path, filename = self.resolve_file_path(
+            file_id=file_id, username=username, is_admin=is_admin
+        )
+        ext = os.path.splitext(filename)[1].lower()
+        size = os.path.getsize(path)
+
+        base = {
+            "file_id": file_id,
+            "filename": filename,
+            "size_bytes": size,
+            "extension": ext.lstrip("."),
+        }
+
+        if ext in self._IMAGE_EXTENSIONS:
+            return {**base, "kind": "image", "media_type": _image_media_type(ext)}
+
+        if ext in self._TEXT_EXTENSIONS:
+            with open(path, "rb") as handle:
+                raw = handle.read(self._PREVIEW_MAX_BYTES)
+            text = raw.decode("utf-8", errors="replace")
+            return {
+                **base,
+                "kind": "text",
+                "text": text,
+                "truncated": size > self._PREVIEW_MAX_BYTES,
+                "language": _language_of(ext),
+            }
+
+        return {
+            **base,
+            "kind": "binary",
+            "message": "该类型不支持预览，请下载后查看",
+        }
+
+    def file_bytes(
+        self, *, file_id: str, username: str, is_admin: bool = False
+    ) -> tuple[bytes, str, str]:
+        """(内容, 文件名, media_type)，用于图片等内联渲染。"""
+        path, filename = self.resolve_file_path(
+            file_id=file_id, username=username, is_admin=is_admin
+        )
+        ext = os.path.splitext(filename)[1].lower()
+        with open(path, "rb") as handle:
+            return handle.read(), filename, _image_media_type(ext)
+
+    def resolve_file_path(
+        self, *, file_id: str, username: str, is_admin: bool = False
+    ) -> tuple[str, str]:
+        """返回 (落盘路径, 原始文件名) 供下载端点使用。
+
+        文件本身不带 owner，权限必须回溯到它所属的 run —— 否则知道 file_id
+        就能下载别人的上传文件。
+        """
         record = repo.get_run_file(file_id)
         if not record:
             raise NotFoundError("文件不存在")
+
+        run = repo.get_run(record["run_id"], with_steps=False)
+        if not run:
+            raise NotFoundError("任务不存在")
+        self._require_run_read(
+            run, username=username, is_admin=is_admin, action="下载该任务的文件"
+        )
+
         if record["ttl_expires_at"] and record["ttl_expires_at"] < time.time():
             raise NotFoundError("文件已过期")
         path = record["stored_path"]
@@ -968,7 +1068,10 @@ class WorkflowService:
     #: 允许执行步骤的 run 状态
     _EXECUTABLE_RUN_STATUSES = ("approved", "running", "paused", "failed")
     #: 允许被执行的步骤状态
-    _EXECUTABLE_STEP_STATUSES = ("pending", "approved")
+    #: 可以直接发起执行的步骤状态。
+    #: `failed` 也在其中 —— 重试就是把失败步重新跑一遍，
+    #: 不给这条路的话「继续执行」在失败后会彻底消失。
+    _EXECUTABLE_STEP_STATUSES = ("pending", "approved", "failed")
 
     def step_needs_gate(self, run: dict[str, Any], step: dict[str, Any]) -> bool:
         return needs_gate(
@@ -1093,6 +1196,35 @@ class WorkflowService:
                     }
                 )
                 return
+
+            # 预算闸门：已经花掉的 token 超了就停手。
+            # 放在锁内、执行前 —— 放在外面会被并发请求绕过。
+            from app.workflow.executor import budget_exceeded
+
+            budget = int(getattr(cfg, "max_tokens_per_run", 0) or 0)
+            if budget > 0:
+                # _usage_summary 在「一次模型调用都还没有」时返回 None（不是 {}）
+                used = (self._usage_summary(run) or {}).get("total_tokens", 0)
+                if budget_exceeded(used, budget):
+                    settled = True
+                    yield sse_frame(
+                        {
+                            "type": "final",
+                            "content": {
+                                "ok": False,
+                                "code": "budget_exceeded",
+                                "error": (
+                                    f"本任务已用 {used:,} tokens，达到上限 {budget:,}。"
+                                    "可调高 WORKFLOW_MAX_TOKENS_PER_RUN 后继续，或直接生成交付物。"
+                                ),
+                                "used_tokens": used,
+                                "limit_tokens": budget,
+                                "idx": step_idx,
+                            },
+                            "trace_id": trace_id,
+                        }
+                    )
+                    return
 
             graph = self._require_graph()
             file_context, _, _ = self._assemble_context(run)
@@ -1475,10 +1607,13 @@ class WorkflowService:
             "chars": len(markdown),
         }
 
-    def list_artifacts(self, *, run_id: str) -> dict[str, Any]:
+    def list_artifacts(
+        self, *, run_id: str, username: str, is_admin: bool = False
+    ) -> dict[str, Any]:
         run = repo.get_run(run_id, with_steps=False)
         if not run:
             raise NotFoundError("任务不存在")
+        self._require_run_read(run, username=username, is_admin=is_admin)
         items = [f for f in repo.list_run_files(run_id) if f.get("kind") == "artifact"]
         return {"artifacts": items, "count": len(items)}
 
@@ -1892,8 +2027,38 @@ class WorkflowService:
         "failed",
     )
 
+    @staticmethod
+    def _is_owner(run: dict[str, Any], username: str) -> bool:
+        """该 run 是否归此用户所有。
+
+        **fail-closed**：owner 或 username 为空都判为「不是所有者」。
+        旧写法是 `if owner and username and owner != username` —— 任意一侧为空
+        就直接放行，遗留数据（username 为空）会对所有人开放。
+        """
+        owner = str(run.get("username") or "").strip()
+        actor = str(username or "").strip()
+        return bool(owner) and bool(actor) and owner == actor
+
+    def _require_run_read(
+        self,
+        run: dict[str, Any],
+        *,
+        username: str,
+        is_admin: bool,
+        action: str = "查看该任务",
+    ) -> None:
+        """读权限：创建者本人或管理员。
+
+        管理员对他人任务**只读**；写操作仍走 `_require_owner`（仅创建者），
+        不把「可查看」放大成「可修改 / 可删除」。
+        """
+        if is_admin:
+            return
+        if not self._is_owner(run, username):
+            raise PermissionDeniedError(f"无权{action}")
+
     def _require_owner(self, run: dict[str, Any], username: str, action: str) -> None:
-        if run.get("username") and username and run["username"] != username:
+        if not self._is_owner(run, username):
             raise PermissionDeniedError(f"只有创建者可以{action}该任务")
 
     def _tool_names(self) -> list[str]:
@@ -2250,3 +2415,39 @@ async def _no_lock():
     靠临界区内重读状态的乐观检查兜底。
     """
     yield
+
+
+def _image_media_type(ext: str) -> str:
+    return {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".bmp": "image/bmp",
+        ".svg": "image/svg+xml",
+    }.get(ext, "application/octet-stream")
+
+
+def _language_of(ext: str) -> str:
+    return {
+        ".md": "markdown",
+        ".markdown": "markdown",
+        ".json": "json",
+        ".yaml": "yaml",
+        ".yml": "yaml",
+        ".py": "python",
+        ".js": "javascript",
+        ".mjs": "javascript",
+        ".ts": "typescript",
+        ".vue": "vue",
+        ".html": "html",
+        ".htm": "html",
+        ".css": "css",
+        ".sql": "sql",
+        ".xml": "xml",
+        ".sh": "bash",
+        ".bat": "bat",
+        ".ps1": "powershell",
+        ".csv": "csv",
+    }.get(ext, "text")

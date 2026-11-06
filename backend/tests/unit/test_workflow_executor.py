@@ -65,12 +65,18 @@ class TestNormalizeToolOutput:
         out = normalize_tool_output(
             "knowledge_query", {"success": True, "result": "字" * 20000}
         )
-        assert len(out["summary"]) < 20000
-        assert "已截断" in out["summary"]
+        # ⚠️ 断言必须**绑定实现常量**：写成 `< 20000` 的话，把上限从 6000
+        # 改成 19000 这个用例照样绿 —— 截断上限被静默改掉不会被发现。
+        from app.workflow.executor import MAX_TOOL_SUMMARY_CHARS
+
+        suffix = "\n…（工具输出已截断）"
+        assert len(out["summary"]) == MAX_TOOL_SUMMARY_CHARS + len(suffix)
+        assert out["summary"].endswith(suffix)
 
     def test_empty_output_gets_placeholder(self):
         out = normalize_tool_output("knowledge_query", {"success": True, "result": ""})
-        assert out["summary"]
+        # 不能只断言真值：占位文案被删成空串以外的任何内容都会通过。
+        assert out["summary"] == "（knowledge_query 没有返回可用内容）"
 
     def test_instant_answer_kept(self):
         out = normalize_tool_output(
@@ -146,7 +152,9 @@ class TestPriorContext:
     def test_long_output_truncated(self):
         steps = [_step(idx=1, status="done", output={"summary": "字" * 5000})]
         text = prior_context(steps, max_chars=100)
-        assert len(text) < 400
+        # 断言要贴合实参（max_chars=100），写成 < 400 宽松了 4 倍，
+        # 把上限改成 390 这个用例照样绿。
+        assert len(text) <= 100 + 200
         assert "已截断" in text
 
 

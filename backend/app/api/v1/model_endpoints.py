@@ -10,10 +10,12 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends
 
 from app.api.deps import ModelServiceDep
-from app.core.deps import CurrentUser, rate_limit
+from app.core.deps import AdminUser, rate_limit
 from app.schemas.model_endpoint import (
     ModelEndpointCreate,
     ModelEndpointDeleteResponse,
@@ -33,10 +35,11 @@ router = APIRouter()
     summary="自定义模型端点列表",
 )
 async def list_model_endpoints(
-    current_user: CurrentUser,
+    admin: AdminUser,
     svc: ModelServiceDep,
     _: None = Depends(rate_limit("models")),
 ) -> dict:
+    """端点配置是全局的（含密钥掩码），只允许部署管理员查看。"""
     return svc.list_endpoints()
 
 
@@ -47,7 +50,7 @@ async def list_model_endpoints(
 )
 async def create_model_endpoint(
     payload: ModelEndpointCreate,
-    current_user: CurrentUser,
+    admin: AdminUser,
     svc: ModelServiceDep,
     _: None = Depends(rate_limit("models")),
 ) -> dict:
@@ -56,7 +59,7 @@ async def create_model_endpoint(
         base_url=payload.base_url,
         api_key=payload.api_key,
         model=payload.model,
-        username=getattr(current_user, "username", "") or "",
+        username=getattr(admin, "username", "") or "",
         enabled=payload.enabled,
     )
 
@@ -68,11 +71,14 @@ async def create_model_endpoint(
 )
 async def test_model_endpoint_inline(
     payload: ModelEndpointTestInline,
-    current_user: CurrentUser,
+    admin: AdminUser,
     svc: ModelServiceDep,
     _: None = Depends(rate_limit("models")),
 ) -> dict:
-    return svc.test_inline(
+    # 连通性探针最长会等 20 秒（思考型模型首片可能要 10 秒），
+    # 放在事件循环里会阻塞所有其它请求 → 丢到线程池。
+    return await asyncio.to_thread(
+        svc.test_inline,
         name=payload.name,
         base_url=payload.base_url,
         api_key=payload.api_key,
@@ -88,7 +94,7 @@ async def test_model_endpoint_inline(
 async def update_model_endpoint(
     endpoint_id: str,
     payload: ModelEndpointUpdate,
-    current_user: CurrentUser,
+    admin: AdminUser,
     svc: ModelServiceDep,
     _: None = Depends(rate_limit("models")),
 ) -> dict:
@@ -103,7 +109,7 @@ async def update_model_endpoint(
 )
 async def delete_model_endpoint(
     endpoint_id: str,
-    current_user: CurrentUser,
+    admin: AdminUser,
     svc: ModelServiceDep,
     _: None = Depends(rate_limit("models")),
 ) -> dict:
@@ -117,8 +123,8 @@ async def delete_model_endpoint(
 )
 async def test_model_endpoint(
     endpoint_id: str,
-    current_user: CurrentUser,
+    admin: AdminUser,
     svc: ModelServiceDep,
     _: None = Depends(rate_limit("models")),
 ) -> dict:
-    return svc.test_endpoint(endpoint_id)
+    return await asyncio.to_thread(svc.test_endpoint, endpoint_id)

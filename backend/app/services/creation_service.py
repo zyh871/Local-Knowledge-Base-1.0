@@ -525,16 +525,33 @@ def _video_ratio_filter(videos: list[dict], ratio_id: str) -> bool:
 
 
 def _no_provider_message() -> str:
+    """没有可用生成服务时，说清「配哪一个 key 就行」——而不是让用户猜。"""
+    from app.core.config import get_bailian_settings
+
     settings = get_model_settings()
-    if not (settings.modelscope_api_key or "").strip():
+    have = []
+    if (settings.modelscope_api_key or "").strip():
+        have.append("ModelScope")
+    if (settings.zhipu_api_key or "").strip():
+        have.append("智谱")
+    if (get_bailian_settings().api_key or "").strip():
+        have.append("百炼")
+
+    if have:
+        # 有 key 却仍然没有模型：多半是供应商白名单把它挡掉了
+        allowed = (settings.creation_providers or "").strip() or "（未设置，默认全部）"
         return (
-            "当前没有可用的生成服务：请在 .env 中设置 MODELSCOPE_API_KEY"
-            "（ModelScope 文生图 / 图生图）。修改后需重启后端。"
+            "检测到 " + "、".join(have) + " 的密钥，但当前没有可用的生成模型。"
+            f"请检查 CREATION_PROVIDERS（当前 {allowed}）是否包含对应供应商。"
+            "修改 backend/.env 后重启客户端。"
         )
-    allowed = (settings.creation_providers or "").strip()
+
     return (
-        "当前没有可用的生成服务：请检查 CREATION_PROVIDERS"
-        f"（当前为 {allowed or '空'}）与对应供应商的密钥。修改后需重启后端。"
+        "还没有可用的生成服务。在 backend/.env 里配下面任意一个密钥即可启用：\n"
+        "· ZHIPU_API_KEY   → 智谱 CogView 出图 / CogVideoX 出视频（最省事）\n"
+        "· MODELSCOPE_API_KEY → ModelScope Qwen-Image 出图\n"
+        "· BAILIAN_API_KEY → 阿里百炼 通义万相 出图 / 出视频\n"
+        "配好后重启客户端，创作页会自动出现对应模型。"
     )
 
 

@@ -28,7 +28,12 @@ from typing import Any, Optional
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# ⚠️ 必须给**绝对路径**。无参 `load_dotenv()` 会按 cwd 向上找第一个 .env，
+# 于是「从 backend/ 启动」与「从仓库根启动」会得到两份不同的配置
+# （实测 JWT 密钥 41 vs 58，互不认），换目录重启就会让所有 token 失效。
+# 这里只为让 `os.getenv()` 直读的地方（如 SERVE_FRONTEND_DIR）也看到配置，
+# override=False 保证真实环境变量优先。
+load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -99,6 +104,17 @@ async def lifespan(app: FastAPI):
 
     settings = get_settings()
 
+    # ---- 安全基线：默认 JWT 密钥等于「任何人都能伪造令牌」----
+    # 生产环境直接拒绝启动；开发环境给出显眼告警，避免本地调试被卡死。
+    if settings.security.is_default_secret:
+        message = (
+            "JWT_SECRET_KEY 仍是默认值 change-me-in-production，"
+            "任何人都能伪造登录令牌。请在 .env 设置至少 32 位的随机值。"
+        )
+        if settings.env == "prod":
+            raise RuntimeError(message)
+        logger.warning("⚠️ %s（当前 env=%s，仅限本地开发）", message, settings.env)
+
     # ---- 身份：初始化 users 表并注入查询 provider ----
     # 失败不阻断启动：回退到 env 管理员，保证旧部署仍可登录。
     try:
@@ -116,6 +132,21 @@ async def lifespan(app: FastAPI):
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"身份初始化失败，回退到 env 管理员: {exc}")
+
+    # ---- 联网搜索：把界面里存的供应商与密钥推给工具层 ----
+    # tools 层不能读数据库（分层约束），由 service 读出来注入。
+    # 不配也能用：DuckDuckGo 免密钥，或环境变量里的 TAVILY/SERPER。
+    try:
+        from app.services import search_service
+
+        search_service.apply_runtime_config()
+        _sc = search_service.current_config()
+        logger.info(
+            f"联网搜索已就绪: {_sc['provider_name']}"
+            f"（{'已配置' if _sc['configured'] else '未配置'}）"
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"联网搜索配置加载失败: {exc}")
 
     # ---- Redis：缓存 / 会话状态 / 限流 / 分布式锁 ----
     logger.info("正在连接 Redis ...")
@@ -276,14 +307,58 @@ class TraceIDMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """补一组基础安全响应头。
+
+    原先进程完全不发这些头，浏览器侧默认行为是「允许被任意站点内嵌」
+    （点击劫持）与「允许 MIME 嗅探」。这里只补**低风险、不改变行为**的几项：
+
+      * `X-Content-Type-Options: nosniff` —— 禁止按内容猜类型
+      * `X-Frame-Options: DENY` —— 禁止被 iframe 内嵌
+      * `Referrer-Policy: no-referrer` —— 跨站不泄漏路径（可能含会话 id）
+      * `X-XSS-Protection: 0` —— 显式关掉已被废弃的旧过滤器
+      * `Content-Security-Policy` —— 只锁 frame-ancestors/base-uri/form-action，
+        其余保持宽松。**不能**用 `default-src 'none'`：本进程同时托管前端 SPA，
+        收死会让打包客户端白屏。
+
+    ⚠️ 不要把它放在 CORS 之前 —— CORS 预检的响应也要带这些头。
+    """
+
+    # 故意保持宽松：只约束「谁能内嵌我」和「基准 URL」，不限制资源来源。
+    _CSP = (
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "object-src 'none'"
+    )
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        headers = response.headers
+        headers.setdefault("X-Content-Type-Options", "nosniff")
+        headers.setdefault("X-Frame-Options", "DENY")
+        headers.setdefault("Referrer-Policy", "no-referrer")
+        headers.setdefault("X-XSS-Protection", "0")
+        headers.setdefault("Content-Security-Policy", self._CSP)
+        return response
+
+
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
     settings = settings or get_settings()
     setup_logging(settings.log, force=True)
+
+    # 生产环境不暴露交互式文档：/docs 与 /openapi.json 匿名可读，
+    # 等于把全部端点、参数结构与内部错误模型免费发给任何人。
+    # 开发环境保留，契约测试也依赖它。
+    expose_docs = settings.env != "prod"
 
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
         lifespan=lifespan,
+        docs_url="/docs" if expose_docs else None,
+        redoc_url="/redoc" if expose_docs else None,
+        openapi_url="/openapi.json" if expose_docs else None,
         description=(
             "基于 FastAPI + LangGraph + Redis 的本地知识库问答系统。"
             "接口路径与 v3 保持兼容。"
@@ -302,6 +377,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(TraceIDMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
 
     # 路由：api_prefix 默认为空，保持与 v3 完全一致的接口路径
     app.include_router(api_router, prefix=settings.api_prefix)

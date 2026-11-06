@@ -160,7 +160,10 @@ def _allowed_providers(kind: str = "image") -> list[str]:
         # 视频可以单独配置：图像供应商能出图不代表能出视频（反之亦然）
         raw = (settings.creation_video_providers or "").strip() or raw
     if not raw:
-        return ["modelscope"]
+        # 默认把已实现的供应商全开：能不能用由各自的密钥决定（_provider_ready）。
+        # 这样用户只要在「联网搜索」旁边那种界面里填了智谱/百炼的 key，创作页立刻有模型，
+        # 不必再去 .env 里手写 CREATION_PROVIDERS。
+        return ["modelscope", "bailian", "zhipu"]
     return [p.strip().lower() for p in raw.split(",") if p.strip()]
 
 
@@ -182,7 +185,10 @@ def _provider_ready(provider: str, *, kind: str) -> bool:
             # 视频走 /videos/generations，与聊天用的 MODEL_BACKEND 无关，
             # 只要配了智谱 key 就能用
             return zhipu_video.enabled()
-        return settings.backend == "zhipu" and bool(settings.zhipu_api_key)
+        # ★ 出图同理：只要求有 key。
+        #   原来这里还要求 backend == "zhipu"，于是「用 ollama 对话 + 智谱出图」
+        #   这种常见组合直接出不了图，而界面上只会显示「无可用模型」。
+        return bool(settings.zhipu_api_key)
     return False
 
 
@@ -275,6 +281,9 @@ async def generate_image(
     data = await image_gen.generate_image(
         prompt,
         model=model,
+        # ★ 必须把 provider 显式传下去：image_gen 自己只会看 MODEL_BACKEND，
+        #   而「ollama 聊天 + 智谱出图」时那个后端根本不对。
+        provider=provider,
         size=size or "1024x1024",
         timeout=float(timeout or settings.image_timeout_seconds),
     )

@@ -9,9 +9,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 
 from app.api.deps import WorkflowServiceDep
@@ -56,6 +57,18 @@ _SSE_HEADERS = {
     "X-Accel-Buffering": "no",
     "Connection": "keep-alive",
 }
+
+
+def _actor(user) -> tuple[str, bool]:
+    """从当前用户提取 `(username, is_admin)`。
+
+    权限判定的**唯一入口**：不要在各自端点里散写
+    `getattr(...) == "admin"` —— 一旦角色名或字段变化，会漏改其中一处。
+    """
+    return (
+        getattr(user, "username", "") or "",
+        getattr(user, "global_role", "") == "admin",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -213,8 +226,14 @@ async def list_runs(
     offset: int = Query(0, ge=0),
     _: None = Depends(rate_limit("workflow")),
 ) -> dict:
+    username, is_admin = _actor(current_user)
     return svc.list_runs(
-        workspace_id=workspace_id, status=status, limit=limit, offset=offset
+        username=username,
+        is_admin=is_admin,
+        workspace_id=workspace_id,
+        status=status,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -239,7 +258,8 @@ async def create_run(
 async def get_run(
     run_id: str, current_user: CurrentUser, svc: WorkflowServiceDep, _: None = Depends(rate_limit("workflow"))
 ) -> dict:
-    return svc.get_run(run_id=run_id)
+    username, is_admin = _actor(current_user)
+    return svc.get_run(run_id=run_id, username=username, is_admin=is_admin)
 
 
 @router.patch(
@@ -282,7 +302,8 @@ async def delete_run(
 async def list_run_files(
     run_id: str, current_user: CurrentUser, svc: WorkflowServiceDep, _: None = Depends(rate_limit("workflow"))
 ) -> dict:
-    return svc.list_files(run_id=run_id)
+    username, is_admin = _actor(current_user)
+    return svc.list_files(run_id=run_id, username=username, is_admin=is_admin)
 
 
 @router.post(
@@ -300,7 +321,8 @@ async def upload_run_files(
     payload: list[tuple[str, bytes]] = []
     for file in files:
         payload.append((file.filename or "", await file.read()))
-    return svc.upload_files(
+    return await asyncio.to_thread(
+        svc.upload_files,
         run_id=run_id,
         username=getattr(current_user, "username", "") or "",
         files=payload,
@@ -324,7 +346,8 @@ async def import_local_file_to_run(
     不做这条限制的话，这个端点就等于「任意路径读取服务器文件」——
     而它原本只是为了让用户不必把已有文件重传一遍。
     """
-    return svc.import_local_file(
+    return await asyncio.to_thread(
+        svc.import_local_file,
         run_id=run_id,
         username=getattr(current_user, "username", "") or "",
         path=payload.path,
@@ -347,7 +370,8 @@ async def import_local_files_to_run(
 
     被跳过的文件连同原因一起在 `failed` 里返回，界面才能说清是哪几个没进来。
     """
-    return svc.import_local_files(
+    return await asyncio.to_thread(
+        svc.import_local_files,
         run_id=run_id,
         username=getattr(current_user, "username", "") or "",
         paths=payload.paths,
@@ -373,6 +397,45 @@ async def delete_run_file(
     )
 
 
+@router.get("/workflow/files/{file_id}/preview", summary="预览引用文件（应用内查看）")
+async def preview_run_file(
+    file_id: str,
+    current_user: CurrentUser,
+    svc: WorkflowServiceDep,
+    _: None = Depends(rate_limit("workflow")),
+) -> dict:
+    """文本直接返回内容，图片返回元信息（字节走 /preview/raw）。
+
+    客户端是 WebView2，`a[download]` 那条路走不通，所以预览必须由接口喂数据。
+    """
+    username, is_admin = _actor(current_user)
+    return svc.preview_file(
+        file_id=file_id, username=username, is_admin=is_admin
+    )
+
+
+@router.get("/workflow/files/{file_id}/preview/raw", summary="预览原始字节（图片）")
+async def preview_run_file_raw(
+    file_id: str,
+    current_user: CurrentUser,
+    svc: WorkflowServiceDep,
+    _: None = Depends(rate_limit("workflow")),
+) -> Response:
+    username, is_admin = _actor(current_user)
+    data, filename, media_type = svc.file_bytes(
+        file_id=file_id, username=username, is_admin=is_admin
+    )
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={
+            # inline 而非 attachment：前端拿 blob 直接塞 <img>，不需要触发下载
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "private, max-age=60",
+        },
+    )
+
+
 @router.get("/workflow/files/{file_id}/download", summary="下载引用文件")
 async def download_run_file(
     file_id: str,
@@ -380,7 +443,10 @@ async def download_run_file(
     svc: WorkflowServiceDep,
     _: None = Depends(rate_limit("workflow")),
 ) -> FileResponse:
-    path, filename = svc.resolve_file_path(file_id=file_id)
+    username, is_admin = _actor(current_user)
+    path, filename = svc.resolve_file_path(
+        file_id=file_id, username=username, is_admin=is_admin
+    )
     return FileResponse(
         path, filename=filename, media_type="application/octet-stream"
     )
@@ -695,7 +761,10 @@ async def list_artifacts(
     svc: WorkflowServiceDep,
     _: None = Depends(rate_limit("workflow")),
 ) -> dict:
-    return svc.list_artifacts(run_id=run_id)
+    username, is_admin = _actor(current_user)
+    return svc.list_artifacts(
+        run_id=run_id, username=username, is_admin=is_admin
+    )
 
 
 @router.post(

@@ -25,8 +25,12 @@ class ConversationService:
 
         return memory
 
-    def _assert_owner(self, conversation_id: str, username: str) -> None:
-        if not self._mem().verify_owner(conversation_id, username):
+    def _assert_owner(
+        self, conversation_id: str, username: str, *, allow_missing: bool = False
+    ) -> None:
+        if not self._mem().verify_owner(
+            conversation_id, username, allow_missing=allow_missing
+        ):
             raise PermissionDeniedError("无权访问该对话")
 
     # ------------------------------------------------------------------
@@ -42,24 +46,18 @@ class ConversationService:
         skip: int,
         limit: int,
     ) -> dict[str, Any]:
+        # 搜索条件下推到 SQL。修复前是"先分页再过滤"，`total` 取的是
+        # 过滤前的 COUNT(*)，命中的条数还会随 page_size 变化 ——
+        # 实测 `search=RAG&limit=1` 得到 total=0，`limit=100` 得到 total=4。
         page = self._mem().list_conversations(
             username=username,
             include_archived=include_archived,
             skip=skip,
             limit=limit,
+            search=search,
         )
-        conversations = page["items"]
-        if search:
-            needle = search.lower()
-            conversations = [
-                c
-                for c in conversations
-                if needle in (c.get("title") or "").lower()
-                or needle in (c.get("preview") or "").lower()
-            ]
-            page["total"] = len(conversations)
         return {
-            "conversations": conversations,
+            "conversations": page["items"],
             "total": page["total"],
             "skip": skip,
             "limit": limit,
@@ -68,7 +66,9 @@ class ConversationService:
     def get(self, *, conversation_id: str, username: str) -> dict[str, Any]:
         self._assert_owner(conversation_id, username)
         conv = self._mem().get_conversation(conversation_id)
-        if not conv:
+        # `get_conversation()` 对不存在的 id 也返回 `{"history": []}`（v3 旧行为），
+        # 只判空字典会把它当成“存在”。必须看真实主键，否则会返回幽灵会话。
+        if not conv or not conv.get("conversation_id"):
             raise NotFoundError("对话不存在")
         return {"conversation": conv}
 
@@ -79,7 +79,9 @@ class ConversationService:
     def update(
         self, *, conversation_id: str, username: str, patch: dict[str, Any]
     ) -> dict[str, Any]:
-        self._assert_owner(conversation_id, username)
+        # 唯一允许"会话尚不存在"的写入口：前端首次命名一个刚建的会话。
+        # 归属由 upsert 的 INSERT 分支写入（写时认领）。
+        self._assert_owner(conversation_id, username, allow_missing=True)
         updated = self._mem().upsert_conversation(
             conversation_id,
             username=username,
@@ -121,7 +123,11 @@ class ConversationService:
 
     def export(self, *, conversation_id: str, username: str) -> dict[str, Any]:
         self._assert_owner(conversation_id, username)
-        if not self._mem().get_conversation(conversation_id):
+        # `get_conversation()` 对不存在的 id 也返回非空 dict（`history` 至少是 []），
+        # 所以不能只判真值 —— 否则 `POST /conversations/<随机 id>/export`
+        # 会返回 200 + 空壳（实测）。必须看真实主键。
+        conv = self._mem().get_conversation(conversation_id)
+        if not conv or not conv.get("conversation_id"):
             raise NotFoundError("对话不存在")
         return self._mem().export_conversation(conversation_id)
 

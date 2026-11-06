@@ -34,7 +34,18 @@ def image_mime(ext: str) -> str:
 
 
 def is_illegal_filename(name: str) -> bool:
-    return ".." in name or "/" in name or "\\" in name
+    """只拦真正的非法文件名，不再「包含 .. 就拒」。
+
+    `a..b.txt`、`report..final.pdf` 都是合法文件名，旧实现会误伤。
+    路径穿越已由 `sanitize_filename` 的 `basename(name) != name` 挡住，
+    这里只兜住「恰好是 . / ..」、路径分隔符与 NUL。
+    """
+    return (
+        name in (".", "..")
+        or "/" in name
+        or "\\" in name
+        or "\x00" in name
+    )
 
 
 def sanitize_filename(name: Optional[str]) -> str:

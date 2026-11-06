@@ -5,6 +5,7 @@
  */
 import { chromium } from 'playwright-core'
 import { mkdirSync } from 'node:fs'
+import { ADMIN_USERNAME, ADMIN_PASSWORD } from './_creds.mjs'
 
 const BASE = process.argv[2] || 'http://127.0.0.1:5199'
 const OUT = process.argv[3] || '.verify-shots'
@@ -29,8 +30,8 @@ try {
   // ---- 登录 ----
   if (await page.locator('input[type="password"]').count()) {
     log('2) 登录')
-    await page.fill('input[type="text"]', 'admin')
-    await page.fill('input[type="password"]', 'admin123')
+    await page.fill('input[type="text"]', ADMIN_USERNAME)
+    await page.fill('input[type="password"]', ADMIN_PASSWORD)
     // 按钮文案是「登 录」（中间有空格），用 has-text 子串匹配会失败
     await page.locator('form button, .login-card button, button').first().click()
     await page.waitForTimeout(3500)

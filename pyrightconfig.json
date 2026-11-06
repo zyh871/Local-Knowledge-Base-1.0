@@ -1,0 +1,31 @@
+{
+  "include": [
+    "backend/app",
+    "backend/tests",
+    "tools",
+    "landing/deploy"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/venv",
+    "**/.venv",
+    "**/site-packages",
+    "**/__pycache__",
+    "**/.pytest_cache",
+    "**/_pytmp*",
+    "**/dist",
+    "**/build",
+    "**/*.egg-info",
+    "**/client_build",
+    "**/backend/data",
+    "**/backend/chroma_db",
+    "**/landing/download",
+    "**/deliverables"
+  ],
+  "venvPath": "backend",
+  "venv": "venv",
+  "extraPaths": [
+    "backend"
+  ],
+  "pythonVersion": "3.13"
+}

@@ -172,6 +172,11 @@ def _build_embeddings() -> Any:
                 model.embedding_model, model.modelscope_api_key, model.modelscope_base_url
             )
         )
+    if backend in ("gemini", "xai"):
+        # 两家的 OpenAI 兼容层不保证提供 /embeddings，
+        # 统一退回零依赖的 TF-IDF（换嵌入模型后要重建向量库）
+        logger.info(f"{backend} 后端使用本地 TF-IDF 嵌入模型（768 维）")
+        return SimpleTFIDFEmbeddings()
     if backend == "local":
         from langchain_community.embeddings import HuggingFaceEmbeddings
 
@@ -362,6 +367,16 @@ def _build_llm(model_name: str) -> Any:
         logger.info(f"使用智谱 LLM: {model_name}")
         return _openai_compatible(
             model_name, model.zhipu_api_key, model.zhipu_base_url, **extra
+        )
+    if backend == "gemini":
+        logger.info(f"使用 Google Gemini: {model_name}")
+        return _openai_compatible(
+            model_name, model.gemini_api_key, model.gemini_base_url, **extra
+        )
+    if backend == "xai":
+        logger.info(f"使用 xAI Grok: {model_name}")
+        return _openai_compatible(
+            model_name, model.xai_api_key, model.xai_base_url, **extra
         )
     if backend == "baidu_qianfan":
         from langchain_qianfan import QianfanChatEndpoint  # type: ignore

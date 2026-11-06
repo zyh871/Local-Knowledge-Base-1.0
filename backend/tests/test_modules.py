@@ -222,58 +222,67 @@ class TestUserProfile:
 # ---------------------------------------------------------------------------
 
 class TestTFIDFEmbeddings:
-    def test_embed_documents_no_recursion(self):
-        """确保 embed_documents 在 _ready=False 时不会无限递归。"""
-        from app.embeddings.tfidf_embeddings import SimpleTFIDFEmbeddings
-        import tempfile, os
-        with tempfile.TemporaryDirectory() as tmpdir:
-            emb = SimpleTFIDFEmbeddings.__new__(SimpleTFIDFEmbeddings)
-            emb.vocab = {}
-            emb.idf_cache = {}
-            emb._tokenized_corpus = []
-            emb._ready = False
-            emb.vocab_path = os.path.join(tmpdir, "tfidf_vocab.pkl")
-            emb._projection_matrix = []
-            emb.FIXED_DIM = 768
-            result = emb.embed_documents(["hello world", "foo bar"])
-            assert len(result) == 2
-            assert len(result[0]) == 768
+    """嵌入的行为契约（不依赖内部字段）。
 
-    def test_embed_query_sets_ready(self):
-        from app.embeddings.tfidf_embeddings import SimpleTFIDFEmbeddings
-        import tempfile, os
-        with tempfile.TemporaryDirectory() as tmpdir:
-            emb = SimpleTFIDFEmbeddings.__new__(SimpleTFIDFEmbeddings)
-            emb.vocab = {}
-            emb.idf_cache = {}
-            emb._tokenized_corpus = []
-            emb._ready = False
-            emb.vocab_path = os.path.join(tmpdir, "tfidf_vocab.pkl")
-            emb._projection_matrix = []
-            emb.FIXED_DIM = 768
-            vec = emb.embed_query("test query")
-            assert len(vec) == 768
-            assert emb._ready is True
+    2026-11-05 换掉了「768×词表稠密投影」，改成特征哈希。旧用例直接给
+    `_projection_matrix` / `idf_cache` 赋值，锁死了实现细节 —— 这里改成只看行为：
+    维度固定、重复调用幂等、以及**速度**（旧实现单篇 86 秒，正是批量上传卡死的元凶）。
+    """
 
-    def test_vocab_reuse_on_duplicate(self):
-        """重复调用 embed_documents 时词表不应增长。"""
+    def _new(self, tmp_path):
         from app.embeddings.tfidf_embeddings import SimpleTFIDFEmbeddings
-        import tempfile, os
-        with tempfile.TemporaryDirectory() as tmpdir:
-            emb = SimpleTFIDFEmbeddings.__new__(SimpleTFIDFEmbeddings)
-            emb.vocab = {}
-            emb.idf_cache = {}
-            emb._tokenized_corpus = []
-            emb._ready = False
-            emb.vocab_path = os.path.join(tmpdir, "tfidf_vocab.pkl")
-            emb._projection_matrix = []
-            emb.FIXED_DIM = 768
-            emb.embed_documents(["hello world", "foo bar"])
-            size1 = len(emb.vocab)
-            emb.embed_documents(["hello world"])
-            size2 = len(emb.vocab)
-            assert size1 == size2
 
+        emb = SimpleTFIDFEmbeddings.__new__(SimpleTFIDFEmbeddings)
+        emb._df = {}
+        emb._doc_count = 0
+        emb._ready = False
+        emb.FIXED_DIM = 768
+        emb.vocab_path = str(tmp_path / "tfidf_vocab.pkl")
+        return emb
+
+    def test_embed_documents_dimension(self, tmp_path):
+        emb = self._new(tmp_path)
+        result = emb.embed_documents(["hello world", "foo bar"])
+        assert len(result) == 2
+        assert all(len(v) == 768 for v in result)
+
+    def test_embed_query_then_documents(self, tmp_path):
+        """先查后写不应递归，且之后仍能正常批量嵌入。"""
+        emb = self._new(tmp_path)
+        vec = emb.embed_query("test query")
+        assert len(vec) == 768
+        assert emb._ready is True
+        assert len(emb.embed_documents(["再来一段"])[0]) == 768
+
+    def test_vocab_stable_on_duplicate(self, tmp_path):
+        """重复嵌入同样的文本，词表不应继续增长。"""
+        emb = self._new(tmp_path)
+        emb.embed_documents(["知识库 文档 检索"])
+        size = len(emb.vocab)
+        emb.embed_documents(["知识库 文档 检索"])
+        emb.embed_documents(["知识库 文档 检索"])
+        assert len(emb.vocab) == size
+
+    def test_embedding_is_fast(self, tmp_path):
+        """性能回归护栏：20 段短文必须在 2 秒内嵌入完。
+
+        旧的稠密投影在 2 万词表下要 86 秒/篇，曾让「批量上传 10 个文件」
+        变成十几分钟。这个断言就是防止它悄悄退回去。
+        """
+        import time
+
+        emb = self._new(tmp_path)
+        texts = [f"第{i}份测试文档，包含一些中文词汇与英文 token{i}。" for i in range(20)]
+        started = time.perf_counter()
+        emb.embed_documents(texts)
+        elapsed = time.perf_counter() - started
+        assert elapsed < 2.0, f"20 段文本嵌入耗时 {elapsed:.2f}s，超过 2s 上限"
+
+    def test_hash_projection_is_deterministic(self, tmp_path):
+        """同一段文本在不同实例里必须得到相同向量（否则检索会漂）。"""
+        a = self._new(tmp_path).embed_query("稳定的向量")
+        b = self._new(tmp_path).embed_query("稳定的向量")
+        assert a == b
 
 # ---------------------------------------------------------------------------
 # bm25_retriever incremental add

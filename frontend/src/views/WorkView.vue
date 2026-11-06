@@ -1,5 +1,11 @@
 <template>
   <AppLayout>
+    <ArtifactDrawer
+      :visible="artifactDrawerOpen"
+      :files="artifacts"
+      @close="artifactDrawerOpen = false"
+    />
+
     <FolderPicker
       v-if="folderPicker.open"
       :mode="folderPicker.mode"
@@ -51,7 +57,8 @@
         <UserMenu
           :name="userName"
           :theme="theme"
-          :items="['models', 'theme']"
+          :items="['search', 'models', 'theme']"
+          @search="showSearchPanel = true"
           @models="router.push('/models')"
           @theme="toggleTheme"
           @logout="logout"
@@ -293,6 +300,7 @@
           />
 
           <StepTimeline
+            @configure-search="showSearchPanel = true"
             v-if="showTimeline"
             :steps="currentRun.steps"
             :status="currentRun.status"
@@ -319,6 +327,9 @@
             <div class="card-head">
               <h4 class="card-title">交付物</h4>
               <div class="card-head-actions">
+                <button class="mini-btn" :disabled="busy" @click="openArtifactDrawer">
+                  浏览全部
+                </button>
                 <button class="mini-btn" :disabled="busy" @click="onShareRun">
                   {{ shareUrl ? '重新生成分享链接' : '生成分享链接' }}
                 </button>
@@ -335,7 +346,8 @@
 
             <ul v-if="artifacts.length" class="artifact-list">
               <li v-for="item in artifacts" :key="item.id">
-                <button class="artifact-link" @click="downloadArtifact(item)">
+                <!-- 点文件名 = 应用内预览；客户端里 a[download] 走不通，先看再下 -->
+                <button class="artifact-link" @click="openArtifact(item)">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                     <polyline points="14 2 14 8 20 8"/>
@@ -343,6 +355,9 @@
                   {{ item.filename }}
                 </button>
                 <span class="artifact-meta">{{ formatSize(item.size_bytes) }}</span>
+                <button class="mini-btn artifact-dl" title="下载" @click="downloadArtifact(item)">
+                  下载
+                </button>
               </li>
             </ul>
             <p v-else class="card-hint">
@@ -589,6 +604,9 @@
       </div>
     </div>
   </AppLayout>
+  <!-- 联网搜索设置 -->
+  <SearchSettings :visible="showSearchPanel" @close="showSearchPanel = false" />
+
 </template>
 
 <script setup>
@@ -598,10 +616,12 @@ import AppLayout from '../layouts/AppLayout.vue'
 import BrandTitle from '../components/BrandTitle.vue'
 import SidebarNav from '../components/sidebar/SidebarNav.vue'
 import UserMenu from '../components/sidebar/UserMenu.vue'
+import SearchSettings from './SearchSettings.vue'
 import PlanEditor from '../components/workflow/PlanEditor.vue'
 import StepTimeline from '../components/workflow/StepTimeline.vue'
 import ClarifyCard from '../components/workflow/ClarifyCard.vue'
 import FolderPicker from '../components/workflow/FolderPicker.vue'
+import ArtifactDrawer from '../components/workflow/ArtifactDrawer.vue'
 import { useTheme } from '../composables/useTheme'
 import {
   workflowApi,
@@ -625,6 +645,7 @@ const currentWorkspaceId = ref(localStorage.getItem('workflow:workspace') || '')
 const runs = ref([])
 const currentRunId = ref('')
 const currentRun = ref(null)
+const showSearchPanel = ref(false)
 const loadingRuns = ref(false)
 const busy = ref(false)
 const errorMessage = ref('')
@@ -669,6 +690,22 @@ const clarifyEnabled = ref(localStorage.getItem('workflow:clarify') !== '0')
 
 // ── 交付物与分享（P7）─────────────────────────────────────────────
 const artifacts = ref([])
+//: 交付物抽屉：客户端没有浏览器，预览/下载都得在应用内完成
+const artifactDrawerOpen = ref(false)
+const previewArtifactId = ref('')
+
+async function openArtifactDrawer() {
+  // 不要把「列表为空」当成不打开的理由：点了没反应比看到空状态更糟。
+  // 但从历史任务进来时列表可能还没加载过 —— 先补一次，再开抽屉。
+  if (!artifacts.value.length) await loadArtifacts()
+  previewArtifactId.value = ''
+  artifactDrawerOpen.value = true
+}
+
+function openArtifact(item) {
+  previewArtifactId.value = item.id
+  artifactDrawerOpen.value = true
+}
 const delivering = ref(false)
 const shareUrl = ref('')
 

@@ -259,6 +259,7 @@
         @documents="toggleDocumentPanel"
         @profile="showProfilePanel = true"
         @long-text="showLongTextPanel = true"
+        @search="showSearchPanel = true"
         @models="router.push('/models')"
         @theme="toggleTheme"
         @logout="logout"
@@ -374,6 +375,7 @@
         @documents="toggleDocumentPanel"
         @profile="showProfilePanel = true"
         @long-text="showLongTextPanel = true"
+        @search="showSearchPanel = true"
         @models="router.push('/models')"
         @theme="toggleTheme"
         @logout="logout"
@@ -832,7 +834,8 @@
                 <rect x="9" y="9" width="6" height="6"/>
                 <path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/>
               </svg>
-              <span class="model-pill-label">{{ selectedModel || '默认模型' }}</span>
+              <!-- 自定义端点 id 是 custom:me_xxx，直接回显等于给用户看机器码 -->
+              <span class="model-pill-label">{{ currentModelLabel }}</span>
               <svg class="model-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <polyline points="6 9 12 15 18 9"/>
               </svg>
@@ -1027,19 +1030,47 @@
             </div>
           </div>
         </div>
+        <!-- 上传进度 / 结果：逐条列出，不再用 alert 一次性糊上来 -->
+        <div v-if="upload.items.length" class="upload-progress">
+          <div class="upload-progress-head">
+            <span v-if="upload.running" class="upload-title">
+              正在上传 {{ upload.index + 1 }}/{{ upload.total }}：{{ upload.currentName }}
+            </span>
+            <span v-else class="upload-title">
+              上传完成：{{ upload.okCount }} 成功<span v-if="upload.failCount">，{{ upload.failCount }} 失败</span>
+            </span>
+            <button v-if="!upload.running" class="upload-clear" @click="clearUploadState">清除</button>
+          </div>
+          <div v-if="upload.running" class="upload-bar">
+            <div class="upload-bar-fill" :style="{ width: Math.round((upload.index / upload.total) * 100) + '%' }"></div>
+          </div>
+          <ul class="upload-list">
+            <li v-for="item in upload.items" :key="item.key" :class="['upload-item', item.status]">
+              <span class="upload-dot"></span>
+              <span class="upload-name">{{ item.name }}</span>
+              <span class="upload-state">
+                {{ item.status === 'ok' ? '已入库' : item.status === 'fail' ? item.error || '失败' : item.status === 'running' ? '上传中…' : '等待中' }}
+              </span>
+            </li>
+          </ul>
+        </div>
+
         <div class="modal-footer">
-          <label class="upload-btn-large">
-            <input type="file" multiple accept=".txt,.md,.pdf,.docx,.pptx,.ppt,.xlsx,.xls,.csv,.jpg,.jpeg,.png,.bmp,.tiff,.html,.htm,.js,.css,.json,.xml,.yaml,.yml,.toml,.ini,.log,.sql" @change="handleFileUpload" />
+          <label class="upload-btn-large" :class="{ disabled: upload.running }">
+            <input type="file" multiple :disabled="upload.running" accept=".txt,.md,.pdf,.docx,.pptx,.ppt,.xlsx,.xls,.csv,.jpg,.jpeg,.png,.bmp,.tiff,.html,.htm,.js,.css,.json,.xml,.yaml,.yml,.toml,.ini,.log,.sql" @change="handleFileUpload" />
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="17 8 12 3 7 8"/>
               <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
-            上传文档
+            {{ upload.running ? '上传中…' : '上传文档' }}
           </label>
         </div>
       </div>
     </div>
+
+    <!-- 联网搜索设置 -->
+    <SearchSettings :visible="showSearchPanel" @close="showSearchPanel = false" />
 
     <!-- Profile panel -->
     <div v-if="showProfilePanel" class="modal-overlay-wrap">
@@ -1166,6 +1197,7 @@ import {
 import AppLayout from '../layouts/AppLayout.vue'
 import SidebarNav from '../components/sidebar/SidebarNav.vue'
 import UserMenu from '../components/sidebar/UserMenu.vue'
+import SearchSettings from './SearchSettings.vue'
 import { useTheme } from '../composables/useTheme'
 
 // 主题由 useTheme 单例统一管理（AppLayout / WorkView / Chat 共享同一份状态）
@@ -1277,6 +1309,7 @@ const loading = ref(false)
 const chatBox = ref(null)
 const showDocumentPanel = ref(false)
 const showProfilePanel = ref(false)
+const showSearchPanel = ref(false)
 const showLongTextPanel = ref(false)
 const documents = ref([])
 const stats = ref(null)
@@ -1284,13 +1317,13 @@ const conversationId = ref('')
 const forceSearch = ref(false)
 
 /**
- * 深度思考开关（默认开）。
+ * 深度思考开关（默认**关**）。
  *
- * 默认开的理由：这是「能看见模型怎么想」的功能，关掉它就退化成普通问答；
- * 但它确实更慢（GLM-4.5 单次推理 20-40 秒），所以给一个显眼的开关，
- * 并记住用户的选择。
+ * 曾经默认开启（「能看见模型怎么想」），但实测简单问题首字要等 16–20 秒
+ * ——模型会先输出约 1000 字推理，再给正文。默认开会让整个产品显得很慢，
+ * 所以改为默认关；用户主动开启后用 localStorage 记住选择。
  */
-const thinkingEnabled = ref(localStorage.getItem('thinkingEnabled') !== '0')
+const thinkingEnabled = ref(localStorage.getItem('thinkingEnabled') === '1')
 /** 服务端下发的思考能力（哪些模型真的会输出推理、默认用哪个） */
 const thinkingInfo = ref({ enabled: false, model: '', models: [] })
 /** 当前后端有没有「会输出推理」的模型；没有就禁用开关，别让按钮看起来像坏了 */
@@ -1825,8 +1858,134 @@ function loadChatData() {
   }
 }
 
+/** 已从服务端拉过消息的会话 id（避免重复请求 / 空会话反复拉）。 */
+const loadedConversations = new Set()
+
+/**
+ * 服务端是会话历史的**真相源**，localStorage 只作离线缓存。
+ *
+ * 旧实现只读 localStorage：换浏览器/清缓存后历史全部“消失”，
+ * 而 `data/conversations.db` 里其实还在。
+ */
+async function fetchServerConversations(limit = 200) {
+  const res = await fetch(`${API_BASE}/conversations?limit=${limit}`, {
+    headers: getAuthHeader(),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const data = await res.json()
+  return Array.isArray(data.conversations) ? data.conversations : []
+}
+
+/**
+ * 按需拉取某条会话的消息。
+ *
+ * 只在用户点开时拉，避免登录后把几十条会话的全部消息一次性读进内存。
+ * 本地已有消息时不覆盖（可能是刚流式生成、尚未回写服务端的内容）。
+ */
+async function fetchConversationMessages(id) {
+  if (!id || id.startsWith('temp-')) return
+  if (chatMessages.value[id]?.length) {
+    loadedConversations.add(id)
+    return
+  }
+  if (loadedConversations.has(id)) return
+
+  try {
+    const res = await fetch(`${API_BASE}/conversations/${encodeURIComponent(id)}`, {
+      headers: getAuthHeader(),
+    })
+    if (!res.ok) return
+    const data = await res.json()
+    const history = data?.conversation?.history || []
+    chatMessages.value[id] = history.map((m) => ({
+      role: m.role,
+      content: m.content || '',
+      status: m.role === 'assistant' ? 'done' : undefined,
+      sources: m.sources || [],
+      data_source: m.data_source || '',
+    }))
+    loadedConversations.add(id)
+    if (conversationId.value === id) {
+      messages.value = chatMessages.value[id]
+    }
+    saveChatData()
+  } catch (e) {
+    console.warn('拉取会话消息失败:', e)
+  }
+}
+
+/**
+ * 登录/进入对话页后，把服务端会话合并进本地列表。
+ *
+ * 合并规则：
+ *   * 以服务端为准（标题、时间），保留本地已有的分组/预览等附加字段；
+ *   * 本地独有（temp-* / 未成功同步）的会话追加在末尾，不丢用户正在编辑的内容；
+ *   * 若当前还是空白的临时会话，自动打开最近一条并加载消息。
+ */
+async function loadServerConversations() {
+  if (!localStorage.getItem('token')) return
+  try {
+    const items = await fetchServerConversations()
+    const localById = new Map(chatHistory.value.map((c) => [c.id, c]))
+    const merged = []
+
+    for (const item of items) {
+      const id = item.conversation_id || item.id
+      if (!id) continue
+      const local = localById.get(id) || {}
+      merged.push({
+        ...local,
+        id,
+        title: item.title || local.title || '新对话',
+        preview: local.preview || '',
+        createdAt: item.created_at || local.createdAt || new Date().toISOString(),
+        updatedAt: item.updated_at || local.updatedAt || '',
+      })
+      localById.delete(id)
+    }
+    // 本地还没同步到服务端的会话（临时会话等）保留，避免用户丢草稿
+    for (const local of localById.values()) merged.push(local)
+
+    chatHistory.value = merged
+
+    if (isTempChat.value && messages.value.length === 0 && merged.length > 0) {
+      conversationId.value = merged[0].id
+      isTempChat.value = false
+      await fetchConversationMessages(conversationId.value)
+      messages.value = chatMessages.value[conversationId.value] || []
+    }
+
+    saveChatData()
+  } catch (e) {
+    // 服务端不可用 / 未登录时继续用本地缓存，不要打断页面
+    console.warn('加载服务端会话失败，使用本地缓存:', e)
+  }
+}
+
+/**
+ * 生成会话 id。
+ *
+ * ⚠️ 不要用 `Date.now()`：毫秒时间戳是**可枚举**的，攻击者可以预置
+ * "受害者下一毫秒会用的 id"，配合后端"首次写入即认领"的规则抢注会话，
+ * 从而读到对方后续写入的内容（已实测的会话 IDOR）。
+ *
+ * `crypto.randomUUID()` 只在安全上下文可用（https / localhost），
+ * 局域网部署（http://192.168.x.x）会是 undefined，所以这里用
+ * `getRandomValues` 兜底 —— 它在非安全上下文也可用。
+ */
+function newConversationId(prefix) {
+  const bytes = new Uint8Array(16)
+  if (window.crypto && window.crypto.getRandomValues) {
+    window.crypto.getRandomValues(bytes)
+  } else {
+    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256)
+  }
+  const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
+  return prefix + hex
+}
+
 function createTempChat() {
-  const newId = 'temp-' + Date.now()
+  const newId = newConversationId('temp-')
   conversationId.value = newId
   messages.value = []
   chatMessages.value[newId] = []
@@ -1834,7 +1993,7 @@ function createTempChat() {
 }
 
 function createFormalChat(title, preview) {
-  const newId = 'conv-' + Date.now()
+  const newId = newConversationId('conv-')
   const oldId = conversationId.value
 
   const chatRecord = {
@@ -1877,7 +2036,7 @@ function newChat() {
   createTempChat()
 }
 
-function switchChat(id) {
+async function switchChat(id) {
   const oldId = conversationId.value
   if (isTempChat.value && messages.value.length === 0) {
     delete chatMessages.value[oldId]
@@ -1891,10 +2050,31 @@ function switchChat(id) {
   })
   isTempChat.value = false
   saveChatData()
+  // 本地没有该会话的消息（例如换浏览器后）→ 按需从服务端拉取
+  await fetchConversationMessages(id)
 }
 
-function deleteChat(id) {
+async function deleteChat(id) {
   if (!confirm('确定要删除这个对话吗？')) return
+
+  // 临时会话没有服务端记录；其余必须先删服务端，否则下次回填会“复活”
+  if (id && !id.startsWith('temp-')) {
+    try {
+      const res = await fetch(`${API_BASE}/conversations/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: getAuthHeader(),
+      })
+      if (!res.ok && res.status !== 404) {
+        alert('删除失败')
+        return
+      }
+    } catch (e) {
+      alert('删除失败: ' + e.message)
+      return
+    }
+  }
+
+  loadedConversations.delete(id)
   const index = chatHistory.value.findIndex(c => c.id === id)
   if (index !== -1) {
     chatHistory.value.splice(index, 1)
@@ -2568,45 +2748,90 @@ function scrollToBottom() {
   }
 }
 
+/**
+ * 批量上传：**逐个文件**提交，进度与结果都是真的。
+ *
+ * 旧实现把整批塞进一个 /upload-multiple 请求：用户点完只能干等，
+ * 一个文件卡住整批都卡住，失败信息最后用 alert 一次性糊出来。
+ */
+const upload = reactive({
+  running: false,
+  total: 0,
+  index: 0,
+  currentName: '',
+  items: [],          // { key, name, status: waiting|running|ok|fail, error }
+  okCount: 0,
+  failCount: 0,
+})
+
+function clearUploadState() {
+  upload.items = []
+  upload.total = 0
+  upload.index = 0
+  upload.okCount = 0
+  upload.failCount = 0
+  upload.currentName = ''
+}
+
 async function handleFileUpload(event) {
-  const files = event.target.files
-  if (!files || files.length === 0) return
+  const fileList = Array.from(event.target.files || [])
+  // 传完立刻清空，保证同一个文件还能再选一次
+  event.target.value = ''
+  if (!fileList.length || upload.running) return
 
-  const formData = new FormData()
-  for (let i = 0; i < files.length; i++) {
-    formData.append('files', files[i])
-  }
-
+  clearUploadState()
+  upload.running = true
+  upload.total = fileList.length
+  upload.items = fileList.map((f, i) => ({
+    key: `${i}-${f.name}`,
+    name: f.name,
+    status: 'waiting',
+    error: '',
+  }))
   loading.value = true
+
   try {
-    const res = await fetch(`${API_BASE}/upload-multiple`, {
-      method: 'POST',
-      headers: getAuthHeader(),
-      body: formData
-    })
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i]
+      const item = upload.items[i]
+      upload.index = i
+      upload.currentName = file.name
+      item.status = 'running'
 
-    const data = await res.json()
-    if (!res.ok) {
-      alert(data.detail || '上传失败')
-      return
-    }
+      const formData = new FormData()
+      formData.append('file', file)
 
-    const results = data.results || []
-    const successCount = results.filter(r => r.success).length
-    const failCount = results.length - successCount
-    const failMessages = results.filter(r => !r.success).map(r => `${r.file}: ${r.error}`).join('\n')
-    if (failCount > 0) {
-      alert(`上传完成: ${successCount} 成功, ${failCount} 失败\n${failMessages}`)
-    } else {
-      alert(`上传成功: ${successCount} 个文件`)
+      try {
+        const res = await fetch(`${API_BASE}/upload`, {
+          method: 'POST',
+          headers: getAuthHeader(),
+          body: formData,
+        })
+        const data = await res.json().catch(() => ({}))
+        if (res.ok && data.success !== false) {
+          item.status = 'ok'
+          upload.okCount += 1
+          if (data.file && data.file !== file.name) {
+            // 同名文件被自动改名，明确告诉用户实际存成了什么
+            item.name = `${file.name} → ${data.file}`
+          }
+        } else {
+          item.status = 'fail'
+          item.error = data.detail || data.error?.message || `HTTP ${res.status}`
+          upload.failCount += 1
+        }
+      } catch (e) {
+        item.status = 'fail'
+        item.error = e.message || '网络错误'
+        upload.failCount += 1
+      }
     }
+  } finally {
+    upload.index = upload.total
+    upload.running = false
+    loading.value = false
     await loadDocuments()
     await refreshStats()
-  } catch (e) {
-    alert('上传失败: ' + e.message)
-  } finally {
-    loading.value = false
-    event.target.value = ''
   }
 }
 
@@ -2870,6 +3095,7 @@ async function batchDeleteChats() {
     if (!res.ok) { alert('删除失败'); return }
     
     selectedChatIds.value.forEach(id => {
+      loadedConversations.delete(id)
       const index = chatHistory.value.findIndex(c => c.id === id)
       if (index !== -1) chatHistory.value.splice(index, 1)
       delete chatMessages.value[id]
@@ -2954,6 +3180,8 @@ onMounted(async () => {
   loadChatData()
   await checkBackend()
   if (!backendOffline.value) {
+    // 服务端是会话历史的真相源：先合并，再加载其它页面数据
+    await loadServerConversations()
     await refreshStats()
     await loadDocuments()
     await loadProfile()
@@ -4476,10 +4704,19 @@ onUnmounted(() => {
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
+  /* 遮罩垫底。别删这一行：见下面 .modal-content 的说明 */
+  z-index: 0;
 }
 
 .modal-content {
   position: relative;
+  /* ★ 必须显式给 z-index。
+     遮罩带了 backdrop-filter，Chromium 会把它提升为独立的合成层，
+     而 z-index:auto 的兄弟节点不一定压在它上面 —— 实测整个对话框会
+     被糊进遮罩里：画面一片模糊，而且点击全被遮罩吃掉，
+     「文档管理」里因此连上传按钮都点不动。
+     写死 1 之后对话框才稳定地在遮罩之上。 */
+  z-index: 1;
   background: var(--color-surface);
   border-radius: var(--radius-lg);
   width: 90%;
@@ -4536,6 +4773,90 @@ onUnmounted(() => {
 }
 
 /* Document grid */
+.upload-progress {
+  padding: 12px 24px 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.upload-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.upload-title { font-weight: 600; }
+
+.upload-clear {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.upload-bar {
+  margin-top: 8px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.upload-bar-fill {
+  height: 100%;
+  background: var(--color-primary);
+  transition: width 0.2s ease;
+}
+
+.upload-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.upload-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.upload-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+
+.upload-item.ok .upload-dot { background: var(--color-success, #2f7d5b); }
+.upload-item.fail .upload-dot { background: var(--color-error, #c0392b); }
+.upload-item.running .upload-dot { background: var(--color-primary); }
+
+.upload-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-state { flex-shrink: 0; color: var(--color-text-tertiary); }
+.upload-item.fail .upload-state { color: var(--color-error, #c0392b); }
+.upload-item.ok .upload-state { color: var(--color-success, #2f7d5b); }
+
+.upload-btn-large.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .empty-documents {
   display: flex;
   flex-direction: column;

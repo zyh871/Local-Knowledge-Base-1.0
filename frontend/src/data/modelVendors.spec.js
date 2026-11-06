@@ -8,8 +8,8 @@ import {
 } from './modelVendors'
 
 describe('MODEL_VENDORS', () => {
-  it('覆盖需求要求的 10 家厂商', () => {
-    expect(MODEL_VENDORS).toHaveLength(10)
+  it('覆盖需求要求的 12 家厂商', () => {
+    expect(MODEL_VENDORS).toHaveLength(12)
     const names = MODEL_VENDORS.map((v) => v.name)
     expect(names).toEqual(
       expect.arrayContaining([
@@ -23,6 +23,8 @@ describe('MODEL_VENDORS', () => {
         '小米 MiMo',
         'GPT',
         'Claude',
+        'Gemini',
+        'Grok',
       ]),
     )
   })

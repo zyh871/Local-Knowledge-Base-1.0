@@ -30,15 +30,19 @@
           :disabled="busy || nextRunnableIdx === null"
           @click="$emit('next-step')"
         >
-          {{ busy ? '执行中…' : '执行下一步' }}
+          {{ busy ? '执行中…' : nextStepFailed ? `重试第 ${nextRunnableIdx} 步` : '执行下一步' }}
         </button>
         <button
           class="mini-btn"
           :disabled="busy || nextRunnableIdx === null"
-          title="连续执行直到需要人工确认或全部完成"
+          :title="
+            nextStepFailed
+              ? '从失败的那一步继续，后面的步骤会接着跑'
+              : '连续执行直到需要人工确认或全部完成'
+          "
           @click="$emit('run-all')"
         >
-          自动执行剩余
+          {{ nextStepFailed ? '从失败处继续' : '自动执行剩余' }}
         </button>
         <button v-if="busy" class="mini-btn" @click="$emit('stop')">停止</button>
         <button
@@ -160,7 +164,15 @@
             </div>
           </template>
 
-          <p v-if="step.error" class="tl-error">{{ step.error }}</p>
+          <p v-if="step.error" class="tl-error">
+            {{ step.error }}
+            <!-- 缺搜索密钥这类错误，用户自己就能解决：给个直达入口 -->
+            <button
+              v-if="needsSearchKey(step.error)"
+              class="mini-btn tl-fix"
+              @click="emit('configure-search')"
+            >去配置联网搜索</button>
+          </p>
           <p v-if="step.retry_count > 0" class="tl-retry">已重试 {{ step.retry_count }} 次</p>
 
           <!-- 驳回：需要一段意见，因此就地展开输入 -->
@@ -231,6 +243,7 @@ const emit = defineEmits([
   'cancel',
   'set-mode',
   'download-artifact',
+  'configure-search',
 ])
 
 const KIND_LABELS = { tool: '工具', llm: '生成', synthesis: '汇总', unplanned: '计划外' }
@@ -405,6 +418,18 @@ function forcedTool(step) {
 function toggle(idx) {
   expanded[idx] = !expanded[idx]
 }
+/**
+ * 下一个待执行步骤是不是「失败后重试」。
+ *
+ * 失败步现在也算可执行（否则整个任务会卡住），但按钮还写「执行下一步」
+ * 会让人以为是要往下走 —— 明确说成「重试」用户才知道发生了什么。
+ */
+const nextStepFailed = computed(() => {
+  if (props.nextRunnableIdx === null || props.nextRunnableIdx === undefined) return false
+  const hit = (props.steps || []).find((s) => s.idx === props.nextRunnableIdx)
+  return hit?.status === 'failed'
+})
+
 function sourcesOf(step) {
   const list = step.output?.sources
   return Array.isArray(list) ? list.filter((s) => s && s.href) : []
@@ -447,17 +472,38 @@ function escapeHtml(text) {
  * ⚠️ 先整段转义、再只插入我们自己构造的 `<a>` —— 绝不能把模型输出直接塞进
  * `v-html`（那是一个 XSS 入口）。编号找不到对应来源时原样保留文字。
  */
+/** 仅允许 http/https —— 转义挡不住 `javascript:` 伪协议，必须在拼 href 前拦。 */
+function safeHref(raw) {
+  try {
+    const url = new URL(String(raw), window.location.origin)
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : ''
+  } catch {
+    return ''
+  }
+}
+
 function renderOutput(step) {
   const text = escapeHtml(step.output?.summary || '')
   const pool = pooledSources.value
   return text.replace(/\[(\d{1,2})\]/g, (match, n) => {
     const src = pool[Number(n) - 1]
     if (!src || !src.href) return match
-    const href = escapeHtml(src.href)
+    const safe = safeHref(src.href)
+    if (!safe) return match
+    const href = escapeHtml(safe)
     const title = escapeHtml(src.title || src.href)
     const dead = src.reachable === false ? ' cite-dead' : ''
     return `<a class="cite${dead}" href="${href}" target="_blank" rel="noopener noreferrer" title="${title}">[${n}]</a>`
   })
+}
+
+/**
+ * 错误文案里出现「API Key 没配」这一类问题时，给用户一个直达设置的入口。
+ * 只匹配缺密钥的特征，不去判断具体是哪家供应商 —— 那属于后端的判断。
+ */
+function needsSearchKey(message) {
+  if (!message) return false
+  return /API[ _-]?Key|not configured|未配置/i.test(String(message))
 }
 
 function domainOf(href) {
@@ -910,6 +956,17 @@ function confirmReject(idx) {
   border-radius: var(--radius-sm);
   background-color: var(--state-warning-bg);
   color: var(--state-warning);
+}
+
+.tl-fix {
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: var(--text-xs);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
 }
 
 .tl-error {

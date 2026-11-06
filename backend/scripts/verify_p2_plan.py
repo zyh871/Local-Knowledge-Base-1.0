@@ -16,10 +16,13 @@ import sys
 from typing import Any
 
 import httpx
+from _creds import admin_credentials
+
+USER, PWD = admin_credentials()
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8001"
 USERNAME = "admin"
-PASSWORD = "admin123"
+PASSWORD = admin_credentials()[1]
 WS_NAME = "P2真机验证"
 
 failures: list[str] = []

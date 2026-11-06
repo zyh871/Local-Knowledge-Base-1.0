@@ -99,8 +99,14 @@ def _inside(root: str, candidate: str) -> bool:
     但不在它里面。跨盘符时 `commonpath` 会抛 ValueError，按"不在里面"处理。
     """
     try:
-        return os.path.commonpath([root, candidate]) == root
+        # 先 realpath：把 ".." 解析掉。
+        # commonpath 是**词法级**比较，会把 "a/b/../c" 当成 "a/b" 的子路径，
+        # 从而把 "越界" 判定成 "在里面"。
+        real_root = os.path.realpath(root)
+        real_candidate = os.path.realpath(candidate)
+        return os.path.commonpath([real_root, real_candidate]) == real_root
     except ValueError:
+        # 跨盘符（commonpath 会抛）
         return False
 
 

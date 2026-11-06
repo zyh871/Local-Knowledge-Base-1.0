@@ -334,6 +334,20 @@ rcedit 会重写整个 PE 资源段，把**追加在文件尾部的 PKG 归档**
 ★ **重装会保留 `backend/.env`**：安装器先把它读进内存，解压完再写回。
 里面是管理员密码、JWT 密钥与模型配置，丢了用户就得重新记一遍新密码。
 
+#### 窗口、任务栏与托盘
+
+- `start.cmd` 走**快速通道**：装有运行环境时直接 `start pythonw`，不经过中间宿主，
+  任务栏里不会出现 cmd / 控制台图标；带参数或缺环境时才回落到 `start.ps1`（错误可见）。
+- 进程设了 `AppUserModelID`（`ZhijingAI.Client.1`）+ `WM_SETICON`，
+  任务栏按「智鲸 AI」分组、用我们自己的图标，而不是 python.exe 的。
+- **点 X 不退出**：`WNDPROC` 子类拦 `WM_CLOSE` → `SW_HIDE`，服务继续跑，托盘留图标。
+  右键托盘：显示主窗口 / 在浏览器中打开 / 退出。
+  （pywebview 的 `window.events.closing` 在 WebView2 平台没有接线，只能自己钩窗口过程。）
+- 没有 `pystray` 时自动退回「关窗即退出」——藏起来叫不出来比直接退出更糟。
+- 想要老行为：`start.ps1 -Foreground` 或 `desktop_app.py --close-quits`。
+- 自检：`python tools/desktop_app.py --selftest --no-server --url about:blank`
+  （验证隐藏/唤回/AUMID/图标，全过才返回 0）。
+
 #### 客户端首次启动
 
 客户端包里没有 `.env`，直接启动会在导入期抛 `ValidationError`。给了两条路：

@@ -13,10 +13,13 @@
 
       <div class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">用户名</label>
+          <label for="login-username" class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">用户名</label>
           <input
+            id="login-username"
             v-model="loginForm.username"
             type="text"
+            autocomplete="username"
+            :aria-invalid="loginError ? 'true' : undefined"
             class="w-full px-4 py-2.5 text-sm text-[var(--color-text-primary)] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg focus:outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary-lighter)] transition-all"
             placeholder="请输入用户名"
             @keyup.enter="handleLogin"
@@ -24,10 +27,13 @@
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">密码</label>
+          <label for="login-password" class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">密码</label>
           <input
+            id="login-password"
             v-model="loginForm.password"
             type="password"
+            autocomplete="current-password"
+            :aria-invalid="loginError ? 'true' : undefined"
             class="w-full px-4 py-2.5 text-sm text-[var(--color-text-primary)] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg focus:outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary-lighter)] transition-all"
             placeholder="请输入密码"
             @keyup.enter="handleLogin"
@@ -40,7 +46,13 @@
         <span>{{ loading ? '登录中...' : '登 录' }}</span>
       </button>
 
-      <p v-if="loginError" class="mt-4 text-sm text-[var(--state-error)] text-center">{{ loginError }}</p>
+      <!-- role="alert" + aria-live：屏幕阅读器必须能报告失败，否则用户只看见颜色变化 -->
+      <p
+        v-if="loginError"
+        role="alert"
+        aria-live="assertive"
+        class="mt-4 text-sm text-[var(--state-error)] text-center"
+      >{{ loginError }}</p>
     </div>
   </div>
 </template>

@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import pathlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
@@ -266,6 +267,53 @@ def rebuild_vectorstore(reindex: bool = True) -> VectorRetriever:
     return store
 
 
+#: 嵌入方式的版本号。换投影算法 / 换模型时必须改这个值。
+#: 启动时若与 data/ 里的标记不一致且库里已有数据 → 自动重建。
+#:   dense-v1：768×词表 稠密随机投影（旧，单篇 86 秒）
+#:   hash-v1 ：特征哈希投影（当前，单篇毫秒级）
+EMBEDDING_SCHEMA = "hash-v1"
+
+
+def _schema_marker() -> pathlib.Path:
+    from pathlib import Path
+
+    return Path(get_settings().paths.data_path) / "embedding_schema.txt"
+
+
+def ensure_embedding_schema() -> str:
+    """检查嵌入方式是否与索引一致；不一致就重建向量库。
+
+    返回一句可读的说明（空字符串表示无需处理）。
+    """
+    from pathlib import Path
+
+    marker = _schema_marker()
+    try:
+        current = marker.read_text(encoding="utf-8").strip() if marker.exists() else ""
+    except OSError:
+        current = ""
+    if current == EMBEDDING_SCHEMA:
+        return ""
+
+    store = get_vectorstore()
+    count = store.get_document_count() if hasattr(store, "get_document_count") else 0
+    if count <= 0:
+        # 空库：直接盖上标记，没有旧向量要迁移
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(EMBEDDING_SCHEMA, encoding="utf-8")
+        return ""
+
+    logger.warning(
+        f"嵌入方式已变更（{current or '未标记'} → {EMBEDDING_SCHEMA}），"
+        f"正在重建 {count} 个分块的向量…"
+    )
+    rebuild_vectorstore(reindex=True)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(EMBEDDING_SCHEMA, encoding="utf-8")
+    logger.info("向量库已按新的嵌入方式重建完成")
+    return f"已按新的嵌入方式重建向量库（原 {count} 个分块）"
+
+
 def ensure_indexed() -> int:
     """向量库为空时自动索引 `data/` 下的文档。
 
@@ -274,6 +322,12 @@ def ensure_indexed() -> int:
     仅在向量库确实为空时动作，不会重复索引。
     """
     try:
+        # 嵌入方式变了就先迁移（否则新向量与旧向量不可比）
+        try:
+            ensure_embedding_schema()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"嵌入版本检查失败（不影响本次启动）: {exc}")
+
         store = get_vectorstore()
         existing = store.get_document_count() if hasattr(store, "get_document_count") else 0
         if existing > 0:

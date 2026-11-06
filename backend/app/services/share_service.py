@@ -166,9 +166,13 @@ class ShareService:
             await self._delete(token)
             raise GoneError("分享链接已过期")
 
+        # ⚠️ 不下发 `conversation_id`。
+        # 这个接口是**公开匿名**的（分享链接本来就是给人转发的），而
+        # `conversation_id` 是内部主键：一旦泄露，配合 `/ask` 写侧缺失的归属校验
+        # 就能往分享者会话里注入内容。分享页只需要标题与内容快照（`data`），
+        # 不需要回源到真实会话。
         return {
             "title": record.get("title", "对话"),
-            "conversation_id": record.get("conversation_id"),
             "created_at": record.get("created_at"),
             "expires_at": (
                 record.get("expires_at", 0) * 1000 if record.get("expires_at") else None

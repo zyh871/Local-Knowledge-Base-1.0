@@ -61,7 +61,9 @@ onMounted(() => {
 
   --color-text-primary: #1A2332;
   --color-text-secondary: #5F6B7A;
-  --color-text-tertiary: #8C95A1;
+  /* 次要文字色（提示语/占位符）对比度不足 4.5:1：
+     #8C95A1 对 #FFFFFF 只有 3.03:1，低于 WCAG AA。换成 #68727E -> 4.89:1。 */
+  --color-text-tertiary: #68727E;
   --color-text-inverse: #FFFFFF;
 
   --state-success: #4A9B6E;
@@ -92,7 +94,8 @@ onMounted(() => {
 
   --color-text-primary: #E8EEF4;
   --color-text-secondary: #9AA8B8;
-  --color-text-tertiary: #6B7A8C;
+  /* 深色下 #6B7A8C 对 #1A2330 只有 3.63:1。换成 #8494A6 -> 5.13:1。 */
+  --color-text-tertiary: #8494A6;
   --color-text-inverse: #1A2332;
 
   --state-success: #5DB380;

@@ -7,3 +7,6 @@
 # 没有的话它会退化成 IE 内核，Vue 3 会白屏 —— 所以 desktop_app.py 会先探测，
 # 探测不到就直接走 Edge 的 --app 模式。
 pywebview>=5.4
+
+# 系统托盘（关窗后缩到托盘，可右键唤回/退出）
+pystray>=0.19

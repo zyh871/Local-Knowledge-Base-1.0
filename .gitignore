@@ -71,3 +71,7 @@ deploy/localtunnel/url.txt
 # 第三方随附库 / 临时测试二进制
 tools/pylibs/
 tools/_t.exe
+
+# 一次性接线/验证脚本（不属于源码）
+_wire_*.py
+.tmp-*

@@ -31,6 +31,10 @@ import openaiLight from '../assets/vendors/openai.png'
 import openaiDark from '../assets/vendors/openai-dark.png'
 import claudeLight from '../assets/vendors/claude.png'
 import claudeDark from '../assets/vendors/claude-dark.png'
+import geminiLight from '../assets/vendors/gemini.png'
+import geminiDark from '../assets/vendors/gemini-dark.png'
+import grokLight from '../assets/vendors/grok.png'
+import grokDark from '../assets/vendors/grok-dark.png'
 
 export const MODEL_TYPE_LABELS = {
   chat: '对话',
@@ -46,6 +50,14 @@ export const MODEL_TYPE_LABELS = {
 
 export function modelTypeLabel(type) {
   return MODEL_TYPE_LABELS[type] || type
+}
+
+//: 这些类型的模型不通过「自定义端点」接入，而是在创作页里直接使用。
+//: 广场里点它们只应该跳转，不该建一个永远用不上的对话端点。
+export const CREATIVE_TYPES = ['image', 'video', 'speech']
+
+export function isCreativeModel(model) {
+  return (model?.types || []).some((t) => CREATIVE_TYPES.includes(t))
 }
 
 export const MODEL_VENDORS = [
@@ -64,6 +76,8 @@ export const MODEL_VENDORS = [
       { id: 'doubao-1.5-lite-32k', name: '豆包 Lite 32K', types: ['chat', 'text'] },
       { id: 'doubao-1.5-vision-pro', name: '豆包视觉 Pro', types: ['multimodal'] },
       { id: 'doubao-embedding-large', name: '豆包向量 Large', types: ['embedding'] },
+      { id: 'doubao-seedream-3-0-t2i', name: 'Seedream 3.0 文生图', types: ['image'] },
+      { id: 'doubao-seedance-1-0-pro', name: 'Seedance 1.0 文生视频', types: ['video'] },
     ],
   },
   {
@@ -83,6 +97,8 @@ export const MODEL_VENDORS = [
       { id: 'qwen-vl-max', name: 'Qwen-VL Max', types: ['multimodal'] },
       { id: 'qwen-coder-plus', name: 'Qwen Coder Plus', types: ['code', 'text'] },
       { id: 'text-embedding-v3', name: '文本向量 V3', types: ['embedding'] },
+      { id: 'wanx2.1-t2i-turbo', name: '通义万相 2.1 Turbo', types: ['image'] },
+      { id: 'wan2.2-t2v-plus', name: '通义万相 2.2 视频', types: ['video'] },
     ],
   },
   {
@@ -112,6 +128,9 @@ export const MODEL_VENDORS = [
       { id: 'glm-4.5', name: 'GLM-4.5', types: ['chat', 'reasoning'] },
       { id: 'glm-4.5-air', name: 'GLM-4.5 Air', types: ['chat', 'reasoning'] },
       { id: 'glm-4-flash', name: 'GLM-4 Flash', types: ['chat', 'text'] },
+      { id: 'cogview-3-flash', name: 'CogView 3 Flash', types: ['image'] },
+      { id: 'cogview-4-250304', name: 'CogView 4', types: ['image'] },
+      { id: 'cogvideox-3', name: 'CogVideoX-3', types: ['video'] },
       { id: 'glm-4v-flash', name: 'GLM-4V Flash', types: ['multimodal'] },
       { id: 'embedding-3', name: 'Embedding-3', types: ['embedding'] },
     ],
@@ -210,6 +229,39 @@ export const MODEL_VENDORS = [
       { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', types: ['chat', 'text'] },
     ],
   },
+  {
+    id: 'gemini',
+    name: 'Gemini',
+    en: 'Google Gemini',
+    icon: 'G',
+    color: '#4285F4',
+    desc: 'Google Gemini 系列，多模态与长上下文见长，官方提供 OpenAI 兼容端点。',
+    // Google 的 OpenAI 兼容层：路径末尾的 / 不能省，否则会被拼成 .../openai/chat/completions
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+    note: '在 Google AI Studio「Get API key」申请密钥；模型 ID 以官方文档为准。',
+    models: [
+      { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', types: ['reasoning', 'chat', 'multimodal'] },
+      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', types: ['chat', 'multimodal'] },
+      { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', types: ['chat', 'text'] },
+      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', types: ['chat', 'multimodal'] },
+    ],
+  },
+  {
+    id: 'grok',
+    name: 'Grok',
+    en: 'xAI Grok',
+    icon: 'X',
+    color: '#111418',
+    desc: 'xAI Grok 系列，联网与实时话题理解是它的长项。',
+    baseUrl: 'https://api.x.ai/v1',
+    note: '在 x.ai 控制台创建 API Key；模型 ID 以控制台列表为准。',
+    models: [
+      { id: 'grok-4', name: 'Grok 4', types: ['reasoning', 'chat'] },
+      { id: 'grok-4-fast', name: 'Grok 4 Fast', types: ['chat'] },
+      { id: 'grok-3', name: 'Grok 3', types: ['chat'] },
+      { id: 'grok-3-mini', name: 'Grok 3 Mini', types: ['chat', 'text'] },
+    ],
+  },
 ]
 
 /**
@@ -218,6 +270,7 @@ export const MODEL_VENDORS = [
  * 图标统一取自 Lobe Icons（`@lobehub/icons-static-png`，MIT），
  * 640×640 透明 PNG；Kimi 使用其单色版以适配浅色背景。
  * 小米 MiMo 在 Lobe 中只有字标，改用小米官方 mi 标识（见 docs/VENDOR_ICONS.md）。
+ * Gemini / Grok 由 frontend/scripts/gen_vendor_logos.py 本地生成（几何化近似标识）。
  */
 const LOGOS = {
   doubao: { light: doubaoLight, dark: doubaoDark },
@@ -230,6 +283,10 @@ const LOGOS = {
   mimo: { light: mimoLight, dark: mimoDark },
   openai: { light: openaiLight, dark: openaiDark },
   claude: { light: claudeLight, dark: claudeDark },
+  // Gemini / Grok：Lobe Icons 未收录这两家的可商用版本，
+  // 这里用本地脚本生成的几何化近似标识（frontend/scripts/gen_vendor_logos.py）。
+  gemini: { light: geminiLight, dark: geminiDark },
+  grok: { light: grokLight, dark: grokDark },
 }
 
 // 运行期挂到目录对象上：避免在 10 个对象里各写一遍 logo 字段

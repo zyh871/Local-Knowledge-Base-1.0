@@ -20,8 +20,9 @@ def ingest(state: RAGState, deps: Deps) -> dict:
     """装载对话历史、用户画像、语言指令；判定会话锁定状态。"""
     from app.memory import get_profile, get_profile_context, is_locked, load_history
 
-    conversation_id = state.get("conversation_id") or "default"
     username = state.get("username") or ""
+    # 与 `qa_service.resolve_conversation_id()` 同一条派生规则，不回落到共享字面量。
+    conversation_id = state.get("conversation_id") or f"default:{username or 'anon'}"
 
     try:
         locked = bool(is_locked(conversation_id))
@@ -30,7 +31,9 @@ def ingest(state: RAGState, deps: Deps) -> dict:
         locked = False
 
     try:
-        history = load_history(conversation_id) or []
+        # 传 username：读侧要校验归属。修复前这里只按 id 取历史，
+        # 于是任何人省略 conversation_id 都会把共享会话的历史灌进自己上下文。
+        history = load_history(conversation_id, username) or []
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"加载对话历史失败，按空历史处理: {exc}")
         history = []

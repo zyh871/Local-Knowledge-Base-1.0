@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import httpx
 import pytest
 
 VALID = {
@@ -410,27 +411,65 @@ class TestConnectionTest:
         assert body["last_test_ok"] is False
         assert "重新测试" in (body["last_test_error"] or "")
 
-    def test_probe_maps_common_errors(self, model_env, monkeypatch):
-        """上游报错要翻译成可操作的提示，而不是把原文甩给用户。"""
+    def _probe_with(self, monkeypatch, handler):
+        """用 MockTransport 替换真实网络，确定性覆盖探针分支。"""
+        from app.core.config import get_settings
         from app.services.model_service import ModelService
 
-        cases = {
-            "Error code: 401 - invalid_api_key": "认证失败",
-            "Error code: 404 - Not Found": "404",
-            "model `foo` not exist": "模型不存在",
-            "Request timed out.": "超时",
-            "Connection error.": "无法连接",
-        }
-        for raw, expected in cases.items():
-            def _raise(*_a, **_kw):
-                raise RuntimeError(raw)
+        real_client = httpx.Client
 
-            monkeypatch.setattr("app.rag.providers._openai_compatible", _raise)
-            ok, message = ModelService(
-                settings=__import__("app.core.config", fromlist=["x"]).get_settings()
-            )._probe(base_url="https://x.example/v1", api_key="k", model="m")
-            assert ok is False
-            assert expected in message, f"{raw} → {message}"
+        def _factory(*args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            return real_client(*args, **kwargs)
+
+        monkeypatch.setattr("app.services.model_service.httpx.Client", _factory)
+        return ModelService(settings=get_settings())._probe(
+            base_url="https://x.example/v1", api_key="k", model="m"
+        )
+
+    def test_probe_succeeds_on_first_stream_line(self, model_env, monkeypatch):
+        """流式探针：拿到第一行 SSE 就成功，不等完整回答。"""
+        ok, error = self._probe_with(
+            monkeypatch,
+            lambda _req: httpx.Response(200, text='data: {"choices":[]}\n\n'),
+        )
+        assert ok is True
+        assert error == ""
+
+    @pytest.mark.parametrize(
+        "status, body, expected",
+        [
+            (401, "", "认证失败"),
+            (404, "", "404"),
+            (400, '{"error":{"message":"模型不存在"}}', "模型不存在"),
+            (502, "bad gateway", "网关错误"),
+        ],
+    )
+    def test_probe_maps_http_errors(
+        self, model_env, monkeypatch, status, body, expected
+    ):
+        """上游 HTTP 错误要翻译成可操作的提示。"""
+        ok, message = self._probe_with(
+            monkeypatch, lambda _req: httpx.Response(status, text=body)
+        )
+        assert ok is False
+        assert expected in message, f"{status} → {message}"
+
+    def test_probe_maps_connect_timeout(self, model_env, monkeypatch):
+        def _raise(_req):
+            raise httpx.ConnectTimeout("connect timeout")
+
+        ok, message = self._probe_with(monkeypatch, _raise)
+        assert ok is False
+        assert "连接超时" in message
+
+    def test_probe_maps_connection_error(self, model_env, monkeypatch):
+        def _raise(_req):
+            raise httpx.ConnectError("connection refused")
+
+        ok, message = self._probe_with(monkeypatch, _raise)
+        assert ok is False
+        assert "无法连接" in message
 
 
 # ---------------------------------------------------------------------------

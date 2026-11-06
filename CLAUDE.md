@@ -209,7 +209,8 @@ api/v1/*  →  services/*  →  graph/*  ·  repositories/*
 
 ## 注意事项
 
-- 默认管理员账号：`admin` / `admin123`
+- 管理员账号与口令由 `backend/.env` 的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 指定
+  （**首次部署务必改成强口令**；`.env` 不入版本库，仓库里不应出现任何明文口令）
 - 首次启动自动加载 `backend/data/` 目录文档并创建向量库
 - 切换模型后端时建议删除 `chroma_db/` 目录重新构建向量库
 - 图片 OCR 需要安装 Tesseract OCR（Docker 镜像已包含中英文语言包）

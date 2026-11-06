@@ -34,8 +34,17 @@ APP_DIR = CORE_DIR.parent                           # backend/app
 BASE_DIR = APP_DIR.parent                           # backend/
 PROJECT_ROOT = BASE_DIR.parent                      # 仓库根
 
-# .env 查找顺序：仓库根 -> backend/（后者优先，与旧行为一致）
-_ENV_FILES = (str(PROJECT_ROOT / ".env"), str(BASE_DIR / ".env"))
+# .env 只认 backend/.env 这一份。
+#
+# ⚠️ 曾经同时挂「仓库根/.env」与「backend/.env」，结果是**生效配置取决于谁先出现**：
+#    * pydantic-settings 多 env_file 时"后者优先" -> backend/.env
+#    * 但 `main.py` 里的无参 `load_dotenv()` 会按 **cwd** 向上找第一个 `.env` 灌进
+#      os.environ，而 os.environ 优先级高于 env_file -> 从仓库根启动时反而用根/.env
+#    两份文件有 43 个键取值不同（JWT 密钥 58 vs 41），于是"换目录重启"会让所有
+#    已签发 token 立即失效，日志里只有一片 401、没有任何"配置变了"的提示。
+#
+# 收敛为绝对路径的单一来源，与 cwd 无关。
+_ENV_FILES = (str(BASE_DIR / ".env"),)
 
 _COMMON_CFG = SettingsConfigDict(
     env_file=_ENV_FILES,
@@ -113,7 +122,15 @@ class RetrievalSettings(_BaseGroup):
 # ---------------------------------------------------------------------------
 
 ModelBackend = Literal[
-    "local", "ollama", "openai", "baidu_qianfan", "modelscope", "zhipu", "mock"
+    "local",
+    "ollama",
+    "openai",
+    "baidu_qianfan",
+    "modelscope",
+    "zhipu",
+    "gemini",
+    "xai",
+    "mock",
 ]
 
 _BACKEND_MODELS: dict[str, tuple[str, str, str]] = {
@@ -125,6 +142,11 @@ _BACKEND_MODELS: dict[str, tuple[str, str, str]] = {
     # 与 TF-IDF 的 768 维不兼容 —— 切换后必须重建向量库。
     "zhipu": ("embedding-3", "glm-4-flash", "glm-4v-flash"),
     "ollama": ("nomic-embed-text", "llama3.2:3b", "llama3.2-vision"),
+    # Google Gemini：官方提供 OpenAI 兼容端点（/v1beta/openai）。
+    # 嵌入先用零依赖的 TF-IDF —— Gemini 的 OpenAI 兼容层不保证有 /embeddings。
+    "gemini": ("local-tfidf", "gemini-2.5-flash", "gemini-2.5-flash"),
+    # xAI Grok：官方 OpenAI 兼容端点，嵌入同样先走 TF-IDF。
+    "xai": ("local-tfidf", "grok-4", "grok-4"),
     "local": ("all-MiniLM-L6-v2", "mock", "mock"),
     "mock": ("mock", "mock", "mock"),
 }
@@ -137,6 +159,8 @@ _BACKEND_LLM_CHOICES: dict[str, tuple[str, ...]] = {
     "openai": ("gpt-4o-mini", "gpt-4o", "gpt-4-turbo"),
     "baidu_qianfan": ("ERNIE-3.5-8K", "ERNIE-4.0-8K-Lite"),
     "ollama": ("llama3.2:3b", "qwen2.5:7b"),
+    "gemini": ("gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"),
+    "xai": ("grok-4", "grok-4-fast", "grok-3", "grok-3-mini"),
     "local": ("mock",),
     "mock": ("mock",),
 }
@@ -152,6 +176,9 @@ _MODEL_LABELS: dict[str, str] = {
     "gpt-4o-mini": "轻量 · 成本低",
     "gpt-4o": "旗舰 · 综合能力最强",
     "gpt-4-turbo": "高吞吐 · 长上下文",
+    "gemini-2.5-flash": "均衡版 · 速度快，多模态",
+    "gemini-2.5-pro": "旗舰版 · 复杂推理与长上下文",
+    "grok-4": "旗舰版 · 实时话题与联网理解强",
 }
 
 # 各后端的视觉能力回退顺序（重试时可逐个降级）
@@ -273,10 +300,17 @@ class ModelSettings(_BaseGroup):
     zhipu_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
     openai_api_key: str = ""
     openai_base_url: str = ""
+    # Google Gemini（OpenAI 兼容端点；末尾的 / 不能省）
+    gemini_api_key: str = ""
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    # xAI Grok（OpenAI 兼容端点）
+    xai_api_key: str = ""
+    xai_base_url: str = "https://api.x.ai/v1"
     qianfan_ak: str = ""
     qianfan_sk: str = ""
     ollama_base_url: str = "http://localhost:11434"
     tavily_api_key: str = ""
+    serper_api_key: str = ""
 
     @model_validator(mode="after")
     def _fill_defaults_and_require_keys(self) -> "ModelSettings":
@@ -290,6 +324,14 @@ class ModelSettings(_BaseGroup):
         if self.backend == "openai" and not self.openai_api_key:
             raise ValueError(
                 "环境变量 OPENAI_API_KEY 未设置。使用 openai 后端时必须配置此变量。"
+            )
+        if self.backend == "gemini" and not self.gemini_api_key:
+            raise ValueError(
+                "环境变量 GEMINI_API_KEY 未设置。使用 gemini 后端时必须配置此变量。"
+            )
+        if self.backend == "xai" and not self.xai_api_key:
+            raise ValueError(
+                "环境变量 XAI_API_KEY 未设置。使用 xai 后端时必须配置此变量。"
             )
         if self.backend == "baidu_qianfan" and not (self.qianfan_ak and self.qianfan_sk):
             raise ValueError(
@@ -407,6 +449,23 @@ class ModelSettings(_BaseGroup):
 #  安全分组
 # ---------------------------------------------------------------------------
 
+# JWT 密钥的最小长度（HS256 建议 >= 32 字节熵）
+_MIN_JWT_SECRET_LENGTH = 32
+# 常见的占位/示例词。命中任意一个即视为「还没改」。
+# ⚠️ 不要用单个 "secret" —— 会误伤 `...SUPERSECRET...` 这类真实随机串的子串，
+#    这里只匹配明显是模板的整词片段。
+_WEAK_SECRET_MARKERS = (
+    "change-me",
+    "changeme",
+    "please-change",
+    "your-secret",
+    "your_secret",
+    "replace-me",
+    "example",
+    "placeholder",
+    "in-production",
+)
+
 
 class SecuritySettings(_BaseGroup):
     jwt_secret_key: str = "change-me-in-production"
@@ -427,7 +486,23 @@ class SecuritySettings(_BaseGroup):
 
     @property
     def is_default_secret(self) -> bool:
-        return self.jwt_secret_key == "change-me-in-production"
+        """JWT 密钥是否为「弱值 / 占位符」。
+
+        ⚠️ 原先只做 `== "change-me-in-production"` 的精确比较，导致
+        `.env.example` 里 `please-change-this-to-a-strong-random-string-...`
+        这类占位符**不被识别** —— 用户照着模板抄下来，`is_default_secret`
+        仍是 False，`APP_ENV=prod` 的拒绝启动守卫不会触发，于是一枚
+        **仓库内公开的字符串成了生产签名密钥**（可伪造任意身份，且本项目
+        没有 token 吊销机制）。
+
+        改为「长度下限 + 占位词表」双判据：只要求它足够长且不像占位符，
+        而不是要求等于某个特定字面量。
+        """
+        key = (self.jwt_secret_key or "").strip()
+        if len(key) < _MIN_JWT_SECRET_LENGTH:
+            return True
+        lowered = key.lower()
+        return any(marker in lowered for marker in _WEAK_SECRET_MARKERS)
 
 
 # ---------------------------------------------------------------------------
@@ -439,11 +514,19 @@ class RateLimitSettings(_BaseGroup):
     model_config = SettingsConfigDict(**_COMMON_CFG, env_prefix="RATE_LIMIT_")
 
     enabled: bool = True
-    max_requests: int = Field(60, ge=1)
+    # 未单独声明 scope 的端点的兜底配额。
+    # 60/60s 对"一个人正常浏览"都不够：首页 + 列表 + 详情几次点击就撞限流。
+    # 300 更接近实际；测试里用 RATE_LIMIT_MAX_REQUESTS 覆盖这个值。
+    max_requests: int = Field(300, ge=1)
     window_seconds: int = Field(60, ge=10)
     # 关键接口的独立配额：{scope: (limit, window_seconds)}
     scope_limits: dict[str, tuple[int, int]] = Field(
         default_factory=lambda: {
+            # 注意：**不要**在这里写 "global" / "probe"。
+            # 限流计数键本身带 scope（`rate_limit:{identity}:{scope}`），
+            # 所以"探针与业务分桶"只需要 scope 名不同，不需要各自的配额条目；
+            # 而一旦写成条目，它的配额就会**盖掉** `max_requests`，
+            # 导致测试里用环境变量放宽默认值的做法失效（会突然一片 429）。
             "token": (5, 60),
             "ask": (30, 60),
             "ask_stream": (30, 60),
@@ -510,9 +593,13 @@ class RedisSettings(_BaseGroup):
     url: str = "redis://localhost:6379/0"
     max_connections: int = Field(50, ge=1)
     socket_timeout: float = Field(5.0, gt=0)
+    #: 建连超时。**必须远小于 socket_timeout**：
+    #: 桌面客户端根本没装 Redis，默认 5s × 3 次重试 = 启动白等 12 秒。
+    #: 连不上就是连不上，快速失败后降级到进程内实现即可。
+    socket_connect_timeout: float = Field(1.5, gt=0)
     key_prefix: str = "kbqa"
     fallback_to_memory: bool = True
-    connect_retries: int = Field(2, ge=0)
+    connect_retries: int = Field(1, ge=0)
 
     # ── TTL（秒）────────────────────────────────
     ttl_session: int = Field(7 * 24 * 3600, ge=60)
@@ -656,6 +743,11 @@ class WorkflowSettings(_BaseGroup):
     max_file_mb: int = Field(20, ge=1)
     step_timeout_seconds: int = Field(180, ge=5)
     search_max_calls_per_run: int = Field(5, ge=0, description="单 run 联网搜索调用上限")
+    #: 单 run 的 token 预算。超过后**暂停执行**并提示，而不是等跑完才发现。
+    #: 0 表示不限制（自建模型/不计成本的场景）。
+    max_tokens_per_run: int = Field(
+        120_000, ge=0, description="单 run 累计 token 上限，0 表示不限制"
+    )
     #: 对搜索来源发 HEAD 做可达性标记（设计 §10.2 第 3 条）。
     #: 测试可关掉，避免在无网络/CI 环境里产生真实请求与等待。
     verify_links: bool = Field(True, description="是否探测来源链接可达性")

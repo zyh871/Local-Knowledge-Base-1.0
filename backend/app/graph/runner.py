@@ -63,10 +63,12 @@ def initial_state(
     model: Optional[str] = None,
     thinking: bool = False,
 ) -> dict:
+    _username = username or ""
     return {
         "question": question,
-        "conversation_id": conversation_id or "default",
-        "username": username or "",
+        # 不回落共享字面量：缺省按用户派生，与 qa_service 的规则一致。
+        "conversation_id": conversation_id or f"default:{_username or 'anon'}",
+        "username": _username,
         "force_search": bool(force_search),
         "trace_id": trace_id,
         "model": model or "",

@@ -163,6 +163,16 @@ const workflow = computed(() =>
   data.value?.data?.kind === 'workflow' ? data.value.data : null
 )
 
+/** 仅允许 http/https：转义挡不住 `javascript:` 伪协议。 */
+function safeHref(raw) {
+  try {
+    const url = new URL(String(raw), window.location.origin)
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : ''
+  } catch {
+    return ''
+  }
+}
+
 /** 工作流里的 `[n]` 引用：编号对应 payload.sources 的下标。 */
 function renderStepText(text, sources) {
   const escape = (s) =>
@@ -176,8 +186,10 @@ function renderStepText(text, sources) {
   return escape(text).replace(/\[(\d{1,2})\]/g, (match, n) => {
     const src = pool[Number(n) - 1]
     if (!src || !src.href) return match
+    const safe = safeHref(src.href)
+    if (!safe) return match
     const dead = src.reachable === false ? ' cite-dead' : ''
-    return `<a class="cite${dead}" href="${escape(src.href)}" target="_blank" rel="noopener noreferrer">[${n}]</a>`
+    return `<a class="cite${dead}" href="${escape(safe)}" target="_blank" rel="noopener noreferrer">[${n}]</a>`
   })
 }
 

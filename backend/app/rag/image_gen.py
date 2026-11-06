@@ -56,16 +56,25 @@ def supports_image_generation(model: str = "") -> bool:
     return get_model_settings().backend in SUPPORTED_BACKENDS
 
 
-def describe_unsupported() -> str:
-    backend = get_model_settings().backend
+def describe_unsupported(provider: str = "") -> str:
+    backend = provider or get_model_settings().backend
+    if backend in SUPPORTED_BACKENDS:
+        # 后端名对但缺密钥：说清楚缺什么，别让人去改一个已经对的配置
+        return f"生成服务「{backend}」还没配置密钥，请在 backend/.env 中补上对应的 API Key。"
     return (
         f"当前模型后端（{backend}）不支持图像生成。"
-        "请在 .env 中把 MODEL_BACKEND 设为 zhipu（或 openai / modelscope 兼容端点）后重启服务。"
+        "请在 .env 中配置 ZHIPU_API_KEY / MODELSCOPE_API_KEY / BAILIAN_API_KEY 之一"
+        "（或把 MODEL_BACKEND 设为 zhipu / openai / modelscope）后重启服务。"
     )
 
 
-def _endpoint(model: str) -> tuple[str, str, str]:
-    """解析出 (url, api_key, upstream_model)。"""
+def _endpoint(model: str, provider: str = "") -> tuple[str, str, str]:
+    """解析出 (url, api_key, upstream_model)。
+
+    `provider` 由调用方指定时会盖过 `MODEL_BACKEND` —— 这一点很关键：
+    出图供应商与聊天后端是两个独立的选择（用 ollama 聊天、用智谱出图完全合法）。
+    不传时保持老行为（沿用 MODEL_BACKEND）。
+    """
     settings = get_model_settings()
 
     if model.startswith(CUSTOM_PREFIX):
@@ -75,7 +84,7 @@ def _endpoint(model: str) -> tuple[str, str, str]:
         url = item["base_url"].rstrip("/") + "/images/generations"
         return url, item["api_key"], item["model"]
 
-    backend = settings.backend
+    backend = (provider or settings.backend).lower()
     if backend == "zhipu":
         return (
             settings.zhipu_base_url.rstrip("/") + "/images/generations",
@@ -134,6 +143,7 @@ async def generate_image(
     prompt: str,
     *,
     model: str,
+    provider: str = "",
     size: str,
     timeout: float = 180.0,
 ) -> bytes:
@@ -142,7 +152,7 @@ async def generate_image(
     超时给得比较宽（默认 180s）：CogView 在高峰期单张 20-60 秒很常见，
     超时太短会让用户以为「功能坏了」。真正的长尾由上游自己兜住。
     """
-    url, api_key, upstream_model = _endpoint(model)
+    url, api_key, upstream_model = _endpoint(model, provider)
     if not api_key:
         raise ValidationError("未配置图像生成的 API Key，请检查 .env")
 

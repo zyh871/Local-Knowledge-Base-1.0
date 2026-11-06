@@ -20,6 +20,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Optional
 
+from app.core.exceptions import PermissionDeniedError
 from app.core.logging import get_logger
 from app.schemas.qa import sse_frame
 from app.utils.files import image_mime, validate_image_upload
@@ -69,6 +70,37 @@ class QAService:
         self.graph = graph
 
     # ------------------------------------------------------------------
+    #  会话归属（写侧唯一闸门）
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def resolve_conversation_id(conversation_id: Optional[str], username: str) -> str:
+        """把缺省 id 派生成**按用户隔离**的稳定值。
+
+        ⚠️ 修复前这里写的是 `conversation_id or "default"`：
+        所有省略 id 的请求都落到同一个字面量行，而前端 `conversationId`
+        初值就是空串（`Chat.vue` 的 `ref('')`），于是**任何人刷新页面后
+        第一次提问都会命中这一行**，历史的读路径又没有归属校验 ——
+        等于把自己的上下文接到别人的会话上。
+        """
+        cid = (conversation_id or "").strip()
+        if cid:
+            return cid
+        return f"default:{username or 'anon'}"
+
+    @staticmethod
+    def assert_can_write(conversation_id: str, username: str) -> None:
+        """写侧归属校验：会话存在且属于他人 -> 403。
+
+        这是 `/ask` 链路上唯一能拦住"往别人会话里塞消息"的地方 ——
+        图状态里的 `persist` 节点只管落库，不做鉴权。
+        """
+        from app.memory import verify_owner
+
+        if not verify_owner(conversation_id, username, allow_missing=True):
+            raise PermissionDeniedError("无权写入该对话")
+
+    # ------------------------------------------------------------------
     #  非流式问答
     # ------------------------------------------------------------------
 
@@ -83,8 +115,9 @@ class QAService:
         model: Optional[str] = None,
         thinking: bool = False,
     ) -> AnswerOutcome:
-        conv_id = conversation_id or "default"
+        conv_id = self.resolve_conversation_id(conversation_id, username)
         try:
+            self.assert_can_write(conv_id, username)
             logger.info(f"[{trace_id}] 收到问题: {question[:50]}... (model={model or '默认'})")
             result = await self._invoke(
                 question, conv_id, username, force_search, trace_id, model, thinking
@@ -96,12 +129,16 @@ class QAService:
                 f"sources={len(result.get('sources', []))}"
             )
             return AnswerOutcome(200, result)
+        except PermissionDeniedError:
+            raise
         except Exception as exc:  # noqa: BLE001
             logger.error(f"[{trace_id}] 处理问题失败: {exc}", exc_info=True)
             return AnswerOutcome(
                 500,
                 {
-                    "answer": f"系统错误: {exc}",
+                    # 不把异常原文回吐给客户端：里面常含本地绝对路径、
+                    # 上游 URL 与 SDK 报文。trace_id 已进日志，可用来定位。
+                    "answer": "系统错误，请稍后重试（如需排查请提供 trace_id）",
                     "sources": [],
                     "data_source": "error",
                     "trace_id": trace_id,
@@ -155,12 +192,13 @@ class QAService:
         thinking: bool = False,
     ) -> AsyncIterator[str]:
         """产出 SSE 帧。异常一律转成 final 事件（响应头已发出，无法改状态码）。"""
-        conv_id = conversation_id or "default"
+        conv_id = self.resolve_conversation_id(conversation_id, username)
         try:
             logger.info(
                 f"[{trace_id}] 收到流式问题: {question[:50]}... "
                 f"(model={model or '默认'}, thinking={thinking})"
             )
+            self.assert_can_write(conv_id, username)
             self._maybe_set_auto_title(conv_id, question, username)
 
             async for event in self._stream(
@@ -171,13 +209,32 @@ class QAService:
         except asyncio.CancelledError:
             logger.info(f"[{trace_id}] 流式请求被客户端取消")
             raise
+        except PermissionDeniedError as exc:
+            # 归属失败：不落库、不回模型，直接以 final 告知前端。
+            logger.warning(f"[{trace_id}] 会话归属校验失败: {exc}")
+            yield sse_frame(
+                {
+                    "type": "final",
+                    "content": {
+                        "answer": str(exc),
+                        "sources": [],
+                        "data_source": "error",
+                        "trace_id": trace_id,
+                        "intent": "error",
+                        "error_type": "permission_denied",
+                    },
+                    "trace_id": trace_id,
+                }
+            )
         except Exception as exc:  # noqa: BLE001
             logger.error(f"[{trace_id}] 流式处理失败: {exc}", exc_info=True)
             yield sse_frame(
                 {
                     "type": "final",
                     "content": {
-                        "answer": f"系统错误: {exc}",
+                        # 不回吐异常原文（含路径/上游 URL/SDK 报文）；
+                        # 原始异常已带 trace_id 进日志。
+                        "answer": "系统错误，请稍后重试（如需排查请提供 trace_id）",
                         "sources": [],
                         "data_source": "error",
                         "trace_id": trace_id,
@@ -255,6 +312,13 @@ class QAService:
         if len(q) > 2000:
             q = q[:2000]
 
+        conversation_id = self.resolve_conversation_id(conversation_id, username)
+        try:
+            self.assert_can_write(conversation_id, username)
+        except PermissionDeniedError as exc:
+            yield self._image_error(str(exc), trace_id)
+            return
+
         try:
             ext = validate_image_upload(filename, len(contents))
         except Exception as exc:  # noqa: BLE001
@@ -269,7 +333,7 @@ class QAService:
         data_url = f"data:{image_mime(ext)};base64,{base64.b64encode(contents).decode('ascii')}"
 
         try:
-            history = load_history(conversation_id)
+            history = load_history(conversation_id, username)
         except Exception:  # noqa: BLE001
             history = []
 
@@ -335,7 +399,12 @@ class QAService:
             try:
                 from app.memory import save_context
 
-                save_context(conversation_id, f"[图片] {filename}\n{q}", full)
+                save_context(
+                    conversation_id,
+                    f"[图片] {filename}\n{q}",
+                    full,
+                    username=username,
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.warning(f"[{trace_id}] 保存图片问答上下文失败: {exc}")
 
@@ -360,7 +429,8 @@ class QAService:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.error(f"[{trace_id}] 图片问答失败: {exc}", exc_info=True)
-            yield self._image_error(f"系统错误: {exc}", trace_id)
+            # 不回吐异常原文（可能含本地绝对路径/上游 URL/密钥片段）
+            yield self._image_error("系统错误，请稍后重试（如需排查请提供 trace_id）", trace_id)
 
     def _maybe_set_image_title(
         self, conversation_id: str, question: str, username: str

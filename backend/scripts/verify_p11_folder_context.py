@@ -19,6 +19,9 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from _creds import admin_credentials
+
+USER, PWD = admin_credentials()
 
 # 本脚本落在 scripts/ 下，Python 只把脚本所在目录加进 sys.path，
 # 因此要显式把后端根目录加进来才能 import app.*（用于确定性地构建提示词）
@@ -76,7 +79,7 @@ def main() -> int:
     client = httpx.Client(base_url=BASE, timeout=300.0, trust_env=False)
     token = client.post(
         "/token",
-        data={"username": "admin", "password": "admin123"},
+        data={"username": USER, "password": PWD},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     ).json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}

@@ -6,6 +6,7 @@
  */
 import { chromium } from 'playwright-core'
 import { mkdirSync } from 'node:fs'
+import { ADMIN_USERNAME, ADMIN_PASSWORD } from './_creds.mjs'
 
 const BASE = process.argv[2] || 'http://localhost:5173'
 const OUT = process.argv[3] || '.verify-shots-p5'
@@ -35,8 +36,8 @@ try {
   await page.goto(BASE, { waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(1500)
   if (await page.locator('input[type="password"]').count()) {
-    await page.fill('input[type="text"]', 'admin')
-    await page.fill('input[type="password"]', 'admin123')
+    await page.fill('input[type="text"]', ADMIN_USERNAME)
+    await page.fill('input[type="password"]', ADMIN_PASSWORD)
     await page.locator('form button, .login-card button, button').first().click()
     await page.waitForTimeout(3500)
   }

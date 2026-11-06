@@ -11,7 +11,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from app.core.deps import CurrentUser, rate_limit
 from app.core.exceptions import UnauthorizedError
 from app.core.logging import get_logger, get_trace_id
-from app.core.security import authenticate_user, create_access_token
+from app.core.security import authenticate_user, create_access_token, require_active
 from app.schemas.auth import Token, User
 
 logger = get_logger(__name__)
@@ -30,6 +30,11 @@ async def login_for_access_token(
             f"[{get_trace_id(request)}] 登录失败 username={form_data.username}"
         )
         raise UnauthorizedError("用户名或密码错误")
+
+    # 口令对了也要看账号状态。
+    # 修复前这里不校验，禁用的账号照样拿到 token（实测 200 + access_token），
+    # 客户端会进入"已登录"状态再被后续接口连环 401 —— 表现为莫名其妙的掉线。
+    require_active(user)
 
     from app.core.config import get_security_settings
 

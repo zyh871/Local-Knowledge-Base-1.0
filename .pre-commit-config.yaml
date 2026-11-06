@@ -1,0 +1,13 @@
+# 本地 pre-commit 钩子：提交前拦一次凭据泄露。
+#
+# 背景：仓库里曾经有 30 个受跟踪文件硬编码了管理员口令，
+# `.env.example` 里还带着一枚"占位符"形态、实际可用的 JWT 密钥
+# （`is_default_secret` 只比对固定 23 字符串，绕过了 prod 拒绝启动的守卫）。
+# 这些必须在下一次提交之前就被挡住。
+#
+# 安装：pip install pre-commit && pre-commit install
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.0
+    hooks:
+      - id: gitleaks

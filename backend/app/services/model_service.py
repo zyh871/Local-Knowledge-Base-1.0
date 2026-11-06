@@ -24,6 +24,7 @@
 
 from __future__ import annotations
 
+import httpx
 from typing import Any, Optional
 from urllib.parse import urlparse
 
@@ -237,36 +238,79 @@ class ModelService:
     def _probe(self, *, base_url: str, api_key: str, model: str) -> tuple[bool, str]:
         """真实发一次最小请求。返回 (是否成功, 失败原因)。
 
-        刻意走**和正式请求完全相同的构造路径**（`_openai_compatible`）：
-        换用裸 httpx 虽然更快，但测通了不代表正式请求也能通 ——
-        那这种「测试通过」就是假的。
+        用**流式**探针：收到第一行 SSE 就判成功，不等完整回答。
+        思考型模型（如 `glm-4.5-air`）默认会先推理几十秒，非流式的
+        `invoke("ping")` 必然在 20s 处超时，从而被误报成「地址不可达」。
+
+        这里**不构造 `ChatOpenAI`**：它在本机初始化就要 ~20s（模型 profile
+        与 httpx 客户端构造），会把 20s 预算全部吃掉；而真正的请求只要 1s。
+        探针只验证「地址 + 鉴权 + 模型」，用同 URL / 同 Header 的原始流更直接。
         """
-        from app.rag.providers import _openai_compatible
+        url = base_url.rstrip("/")
+        if not url.endswith("/chat/completions"):
+            url += "/chat/completions"
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": "ping"}],
+            "max_tokens": 8,
+            "stream": True,
+        }
 
         try:
-            client = _openai_compatible(
-                model,
-                api_key,
-                base_url,
-                timeout=_TEST_TIMEOUT,
-                max_retries=0,
+            timeout = httpx.Timeout(_TEST_TIMEOUT, connect=min(15.0, _TEST_TIMEOUT))
+            with httpx.Client(timeout=timeout) as client:
+                with client.stream("POST", url, headers=headers, json=payload) as resp:
+                    if resp.status_code != 200:
+                        body = resp.read().decode("utf-8", "ignore")
+                        return self._probe_http_error(resp.status_code, body, model)
+
+                    for line in resp.iter_lines():
+                        if line.strip():
+                            # 第一行 SSE（可能是 reasoning 分片）已证明：
+                            # 地址可达、鉴权通过、模型存在。
+                            return True, ""
+            return False, "连接成功，但模型没有返回任何内容"
+        except httpx.ConnectTimeout:
+            return False, "连接超时：无法建立到该地址的连接（请检查地址或代理）"
+        except httpx.TimeoutException:
+            return False, (
+                f"请求超时（{int(_TEST_TIMEOUT)}s）：模型未在时限内开始响应"
+                "（地址通常可达；思考型模型可能仍在推理）"
             )
-            client.invoke("ping")
-            return True, ""
-        except Exception as exc:  # noqa: BLE001 - 任何异常都归为「连不上」
-            message = str(exc)
-            # 常见错误给出可操作的解释，而不是把上游原文直接甩给用户
-            if "401" in message or "Unauthorized" in message or "invalid_api_key" in message:
-                return False, "认证失败（401）：请检查 API 密钥"
-            if "404" in message or "Not Found" in message:
-                return False, "接口返回 404：请检查接口地址是否需要带 /v1 等路径前缀"
-            if "model" in message and ("not exist" in message or "not found" in message):
-                return False, f"模型不存在：上游不认识「{model}」，请核对模型名称"
-            if "timed out" in message or "Timeout" in message:
-                return False, f"请求超时（{int(_TEST_TIMEOUT)}s）：地址可能不可达"
-            if "Connection" in message or "connect" in message:
-                return False, "无法连接到该地址：请检查接口地址与网络"
-            return False, message[:300]
+        except httpx.ConnectError:
+            return False, "无法连接到该地址：请检查接口地址与网络"
+        except Exception as exc:  # noqa: BLE001
+            return False, str(exc)[:300]
+
+    @staticmethod
+    def _probe_http_error(status: int, body: str, model: str) -> tuple[bool, str]:
+        """把上游的 HTTP 错误翻译成用户能照做的提示。"""
+        text = body or ""
+        lowered = text.lower()
+        if status == 401:
+            return False, "认证失败（401）：请检查 API 密钥"
+        if status == 404:
+            return False, "接口返回 404：请检查接口地址是否需要带 /v1 等路径前缀"
+        if status in (502, 503, 504):
+            return False, f"网关错误（{status}）：地址不可达或代理异常"
+
+        model_missing = (
+            (
+                "model" in lowered
+                and ("not exist" in lowered or "not found" in lowered or "invalid" in lowered)
+            )
+            or "模型不存在" in text
+        )
+        if status == 400 and model_missing:
+            return False, f"模型不存在：上游不认识「{model}」，请核对模型名称"
+
+        snippet = text.strip().replace("\n", " ")[:200]
+        return False, f"接口返回 {status}：{snippet or '无响应体'}"
 
     def test_endpoint(self, endpoint_id: str) -> dict[str, Any]:
         """测试已保存端点的连通性，并把结果记下来供界面展示。"""

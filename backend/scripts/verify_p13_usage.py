@@ -10,9 +10,10 @@ import sys
 import time
 
 import httpx
+from _creds import admin_credentials
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
-USER, PWD = "admin", "admin123"
+USER, PWD = admin_credentials()
 
 fails: list[str] = []
 

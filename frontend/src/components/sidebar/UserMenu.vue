@@ -66,11 +66,19 @@ const props = defineProps({
    */
   items: {
     type: Array,
-    default: () => ['documents', 'profile', 'long-text', 'models', 'theme'],
+    default: () => ['documents', 'profile', 'long-text', 'search', 'models', 'theme'],
   },
 })
 
-const emit = defineEmits(['documents', 'profile', 'long-text', 'models', 'theme', 'logout'])
+const emit = defineEmits([
+  'documents',
+  'profile',
+  'long-text',
+  'search',
+  'models',
+  'theme',
+  'logout',
+])
 
 const root = ref(null)
 const open = ref(false)
@@ -83,6 +91,7 @@ const ICONS = {
   documents: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`,
   profile: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
   'long-text': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
+  search: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>`,
   models: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg>`,
   theme: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
   logout: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`,
@@ -92,6 +101,7 @@ const ITEMS = [
   { key: 'documents', label: '文档管理', icon: ICONS.documents },
   { key: 'profile', label: '用户画像', icon: ICONS.profile },
   { key: 'long-text', label: '长文本工具', icon: ICONS['long-text'] },
+  { key: 'search', label: '联网搜索', icon: ICONS.search },
   { key: 'models', label: '模型设置', icon: ICONS.models },
   { key: 'theme', label: '深色模式', icon: ICONS.theme },
 ]

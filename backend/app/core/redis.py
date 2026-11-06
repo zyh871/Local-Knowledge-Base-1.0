@@ -186,7 +186,7 @@ class RedisManager:
                     max_connections=cfg.max_connections,
                     decode_responses=True,
                     socket_timeout=cfg.socket_timeout,
-                    socket_connect_timeout=cfg.socket_timeout,
+                    socket_connect_timeout=cfg.socket_connect_timeout,
                 )
                 await client.ping()
 
@@ -195,7 +195,7 @@ class RedisManager:
                     max_connections=max(4, cfg.max_connections // 4),
                     decode_responses=True,
                     socket_timeout=cfg.socket_timeout,
-                    socket_connect_timeout=cfg.socket_timeout,
+                    socket_connect_timeout=cfg.socket_connect_timeout,
                 )
                 sync_client.ping()
 
@@ -515,6 +515,17 @@ end
 return 0
 """
 
+# 续期脚本：只有持有者本人才能延长 TTL。
+# ⚠️ 没有续期的话，长任务超过 TTL 就会**自动失锁** —— 第二个重建任务趁机进入，
+# 两个进程同时写同一个 Chroma 目录 → hnsw 索引损坏
+# （症状是之后所有上传报 "Error loading hnsw index"）。
+_RENEW_LUA = """
+if redis.call('get', KEYS[1]) == ARGV[1] then
+    return redis.call('expire', KEYS[1], ARGV[2])
+end
+return 0
+"""
+
 
 @asynccontextmanager
 async def distributed_lock(
@@ -557,9 +568,34 @@ async def distributed_lock(
             raise LockNotAcquired(f"资源 {resource} 正被其他任务占用")
         await asyncio.sleep(poll_interval)
 
+    renew_task = None  # 续期协程（asyncio.Task）
+
+    async def _renew_loop() -> None:
+        """持锁期间定期续期，避免长任务超过 TTL 自动失锁。"""
+        interval = max(ttl / 3, 1.0)
+        try:
+            while True:
+                await asyncio.sleep(interval)
+                try:
+                    ok = await client.eval(_RENEW_LUA, 1, key, token, int(ttl))
+                except Exception as exc:  # noqa: BLE001 - fakeredis 可能不支持 Lua
+                    logger.debug(f"锁 {resource} 续期调用失败（将由 TTL 兜底）: {exc}")
+                    return
+                if not ok:
+                    logger.warning(
+                        f"锁 {resource} 续期失败：token 已不匹配，"
+                        f"可能有其他任务接管了锁（TTL={ttl}s）"
+                    )
+                    return
+        except asyncio.CancelledError:
+            return
+
     try:
+        renew_task = asyncio.get_running_loop().create_task(_renew_loop())
         yield token
     finally:
+        if renew_task is not None:
+            renew_task.cancel()
         try:
             await client.eval(_RELEASE_LUA, 1, key, token)
         except Exception:  # noqa: BLE001  fakeredis 无 Lua 支持时退化为直接删除

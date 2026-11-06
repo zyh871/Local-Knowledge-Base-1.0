@@ -88,6 +88,27 @@
       </p>
       <p v-if="errorMessage" class="mp-error">{{ errorMessage }}</p>
 
+      <!-- 创作能力：文生图 / 文生视频 -->
+      <section v-if="view === 'plaza'" class="creative-strip">
+        <div class="creative-head">
+          <span class="creative-title">文生图 / 文生视频</span>
+          <button class="creative-link" @click="router.push('/create')">去创作页 →</button>
+        </div>
+        <div v-if="creative.imageModels.length || creative.videoModels.length" class="creative-body">
+          <p v-if="creative.imageModels.length" class="creative-line">
+            <span class="creative-tag image">文生图</span>
+            {{ creative.imageModels.map((m) => m.label).join(' · ') }}
+          </p>
+          <p v-if="creative.videoModels.length" class="creative-line">
+            <span class="creative-tag video">文生视频</span>
+            {{ creative.videoModels.map((m) => m.label).join(' · ') }}
+          </p>
+        </div>
+        <p v-else class="creative-empty">
+          还没有可用的生成模型。{{ creative.message }}
+        </p>
+      </section>
+
       <!-- ① 厂商网格 -->
       <template v-if="view === 'plaza'">
         <div class="vendor-grid">
@@ -198,8 +219,14 @@
 
             <p v-if="model.note" class="model-note">{{ model.note }}</p>
 
-            <button class="model-action" @click="openModel(activeVendor, model)">
-              {{ endpointFor(activeVendor, model) ? '编辑接入' : '接入此模型' }}
+            <button class="model-action" @click="onModelAction(activeVendor, model)">
+              {{
+                isCreativeModel(model)
+                  ? '去创作页使用'
+                  : endpointFor(activeVendor, model)
+                    ? '编辑接入'
+                    : '接入此模型'
+              }}
             </button>
           </article>
         </div>
@@ -388,14 +415,38 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppLayout from '../layouts/AppLayout.vue'
 import { modelApi } from '../api/models'
+import { creationApi } from '../api/creations'
 import { useTheme } from '../composables/useTheme'
 import {
   CUSTOM_VENDOR,
+  isCreativeModel,
   MODEL_VENDORS,
   modelTypeLabel,
 } from '../data/modelVendors'
 
 const router = useRouter()
+
+/**
+ * 创作能力（文生图 / 文生视频）。
+ *
+ * 广场目录里虽然有 image/video 类型的模型条目，但**能不能用取决于后端**：
+ * 要配了对应供应商的密钥才会真的出现可用模型。所以这里直接问后端，
+ * 而不是拿目录当能力清单 —— 否则会出现「广场有图标、创作页点开是空的」。
+ */
+const creative = ref({ imageModels: [], videoModels: [], message: '' })
+
+async function loadCreative() {
+  try {
+    const data = await creationApi.options()
+    creative.value = {
+      imageModels: data.models || [],
+      videoModels: data.video_models || [],
+      message: data.message || data.video_message || '',
+    }
+  } catch {
+    // 创作能力拿不到不影响广场的其它功能，静默即可
+  }
+}
 const { theme, toggleTheme } = useTheme()
 
 const vendors = MODEL_VENDORS
@@ -522,6 +573,16 @@ function openCustom() {
   testResult.value = null
   errorMessage.value = ''
   view.value = 'model'
+}
+
+function onModelAction(vendor, model) {
+  // 图像 / 视频模型不通过「自定义端点」接入：那条链路只服务对话，
+  // 建出来的端点图像管线根本不读。直接带去创作页。
+  if (isCreativeModel(model)) {
+    router.push('/create')
+    return
+  }
+  openModel(vendor, model)
 }
 
 function openModel(vendor, model) {
@@ -771,7 +832,10 @@ function logout() {
   router.push('/login')
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadCreative()
+})
 onUnmounted(() => {
   if (toastTimer) clearTimeout(toastTimer)
 })
@@ -973,6 +1037,66 @@ onUnmounted(() => {
 .mp-back-btn:hover {
   background-color: var(--color-surface-secondary);
   color: var(--color-text-primary);
+}
+
+.creative-strip {
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.creative-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.creative-title {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.creative-link {
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.creative-link:hover { text-decoration: underline; }
+
+.creative-body { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+
+.creative-line {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}
+
+.creative-tag {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.creative-tag.image { color: #1A4A7A; background: rgba(26, 74, 122, 0.1); }
+.creative-tag.video { color: #7A3E9D; background: rgba(122, 62, 157, 0.1); }
+
+.creative-empty {
+  margin: 10px 0 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  line-height: 1.7;
+  white-space: pre-line;
 }
 
 .mp-notice {

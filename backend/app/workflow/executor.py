@@ -26,6 +26,7 @@ from app.workflow.citation import number_sources
 logger = get_logger(__name__)
 
 __all__ = [
+    "budget_exceeded",
     "MAX_PRIOR_OUTPUT_CHARS",
     "MAX_PRIOR_OUTPUT_CHARS_CODE",
     "STEP_SYSTEM_PROMPT",
@@ -288,6 +289,18 @@ def normalize_tool_output(name: str, result: Any) -> dict[str, Any]:
     return output
 
 
+def budget_exceeded(used: int, limit: int) -> bool:
+    """本 run 的 token 是否已经超出预算。
+
+    `limit <= 0` 表示不限制（自建模型、不计成本的场景）。
+    抽成独立函数是为了能单测边界：恰好等于上限时**应当**停下，
+    否则「最后一个步骤把预算撑爆」永远拦不住。
+    """
+    if limit <= 0:
+        return False
+    return used >= limit
+
+
 def search_calls_used(steps: list[dict[str, Any]]) -> int:
     """统计本 run 已经用掉的联网搜索次数（含当前步）。"""
     count = 0
@@ -376,5 +389,10 @@ def runnable_next_step(
             if needs_gate(step=step, mode=mode, forced_tools=forced):
                 return None  # 在等人工确认
             return step
-        return None  # awaiting_approval / running / failed / rejected
+        if status == "failed":
+            # 失败步可以**原地再试**：不这样做的话 next_runnable_idx 变 null，
+            # 「继续执行」按钮消失，整个任务卡在这一步 ——
+            # 用户唯一的出路是手动点该步的「重试」，而多数人根本不知道要去点。
+            return step
+        return None  # awaiting_approval / running / rejected
     return None

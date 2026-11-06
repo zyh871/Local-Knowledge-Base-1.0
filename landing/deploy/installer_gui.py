@@ -20,15 +20,18 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import random
+import re
 import shutil
 import string
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import traceback
 import urllib.request
 import zipfile
@@ -38,6 +41,21 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "智鲸 AI 客户端"
+
+#: 配置档案（随包分发，也可以从远端下载覆盖）
+PROFILE_SCHEMA = 1
+PROFILE_REL = Path("config") / "profile.json"
+SOURCE_REL = Path("config") / "source.json"
+REPORT_REL = Path("config") / "applied.json"
+
+#: 内置兜底档案：包里什么都没有时用它（全部走本机探测）
+BUILTIN_PROFILE: dict = {
+    "schema": PROFILE_SCHEMA,
+    "name": "内置默认",
+    "env": {},
+    "search": {},
+    "endpoints": [],
+}
 APP_VERSION = "1.0.0"
 #: 默认安装位置。用户可以在界面上改成任意目录（不需要管理员权限的目录）
 DEFAULT_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "ZhijingAIClient"
@@ -121,58 +139,391 @@ def probe_ollama() -> tuple[str, str, str | None] | None:
     return base, chats[0], (embeds[0] if embeds else None)
 
 
-def ensure_env(target: Path) -> tuple[str, str | None]:
-    """生成 backend/.env。返回 (说明, 初始密码或 None)。"""
-    env_file = target / "backend" / ".env"
-    if env_file.exists():
-        return "已存在配置，保留不动", None
-
-    password = "".join(random.choice(string.ascii_letters + string.digits) for _ in range(12))
-    secret = "".join(random.choice("0123456789abcdef") for _ in range(64))
-    lines = [
-        "# 由安装程序生成，改完保存即可生效。",
-        "ADMIN_USERNAME=admin",
-        f"ADMIN_PASSWORD={password}",
-        f"JWT_SECRET_KEY={secret}",
-    ]
-
+def detect_local_model_env() -> tuple[dict[str, str], str]:
+    """探测本机 Ollama，返回 (要写进 .env 的键值, 说明)。"""
     local = probe_ollama()
     if local:
         base, model, embed = local
-        lines += [
-            "",
-            "# 检测到本机 Ollama，默认用本地模型（数据不出本机，无需密钥）",
-            "MODEL_BACKEND=ollama",
-            f"OLLAMA_BASE_URL={base}",
-            f"LLM_MODEL={model}",
-        ]
+        env = {
+            "MODEL_BACKEND": "ollama",
+            "OLLAMA_BASE_URL": base,
+            "LLM_MODEL": model,
+        }
         if embed:
-            lines.append(f"EMBEDDING_MODEL={embed}")
+            env["EMBEDDING_MODEL"] = embed
             note = f"已检测到本地模型 {model}（向量模型 {embed}），启动后即可直接对话"
         else:
-            # 没有向量模型时绝不能留空：默认值 nomic-embed-text 往往没装，
-            # 而 Chroma 在嵌入不可用时会回落到内置 ONNX 模型，首次上传就要联网下 79 MB。
-            lines += [
-                "# 本机没有向量模型，检索用零依赖的 TF-IDF（不需要联网下载）",
-                "EMBEDDING_MODEL=local-tfidf",
-            ]
+            # 没有向量模型时绝不能留空：默认的 nomic-embed-text 往往没装，
+            # 而 Chroma 在嵌入不可用时会回落到内置 ONNX 模型，首次上传要联网下 79 MB。
+            env["EMBEDDING_MODEL"] = "local-tfidf"
             note = f"已检测到本地模型 {model}，检索使用内置 TF-IDF（无需下载）"
-    else:
-        lines += [
-            "",
-            "# 没检测到本地模型。两条路选一条：",
-            "#   1) 装 Ollama 后双击「检测本地模型.cmd」，自动切到本地模型",
-            "#   2) 填云端密钥：把下面 ZHIPU_API_KEY 补全",
-            "MODEL_BACKEND=zhipu",
-            "ZHIPU_API_KEY=",
-            "# 云端嵌入模型（智谱 embedding-3，2048 维）",
-            "EMBEDDING_MODEL=embedding-3",
-        ]
-        note = "未检测到本地模型，需要用云端模型（启动前请填 ZHIPU_API_KEY）"
+        return env, note
 
-    env_file.parent.mkdir(parents=True, exist_ok=True)
-    env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return note, password
+    return (
+        {
+            "MODEL_BACKEND": "zhipu",
+            "ZHIPU_API_KEY": "",
+            "EMBEDDING_MODEL": "embedding-3",
+        },
+        "未检测到本地模型，需要用云端模型（启动前请填 ZHIPU_API_KEY）",
+    )
+
+
+# ---------------------------------------------------------------------------
+#  配置档案：嵌入包内的默认值 + 可选远端下发
+# ---------------------------------------------------------------------------
+def _read_json(path: Path) -> dict | None:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _valid_profile(data: object) -> tuple[bool, str]:
+    """校验档案结构。宁可整份丢弃，也不要写进半份坏配置。"""
+    if not isinstance(data, dict):
+        return False, "不是 JSON 对象"
+    schema = data.get("schema")
+    if not isinstance(schema, int):
+        return False, "缺少 schema 版本号"
+    if schema > PROFILE_SCHEMA:
+        return False, f"schema={schema} 高于本安装器支持的 {PROFILE_SCHEMA}"
+    for key in ("env", "search"):
+        value = data.get(key, {})
+        if value and not isinstance(value, dict):
+            return False, f"{key} 必须是对象"
+    endpoints = data.get("endpoints", [])
+    if endpoints and not isinstance(endpoints, list):
+        return False, "endpoints 必须是数组"
+    for item in endpoints:
+        if not isinstance(item, dict) or not item.get("model") or not item.get("base_url"):
+            return False, "endpoints 里有条目缺少 model / base_url"
+    return True, ""
+
+
+def load_packaged_profile(target: Path) -> tuple[dict | None, str]:
+    """包内档案：解压后就在 config/profile.json。"""
+    path = target / PROFILE_REL
+    if not path.is_file():
+        return None, "包内没有 profile.json"
+    data = _read_json(path)
+    if data is None:
+        return None, "包内 profile.json 解析失败"
+    ok, why = _valid_profile(data)
+    if not ok:
+        return None, f"包内 profile.json 不可用：{why}"
+    return data, f"包内档案（{data.get('name') or '未命名'}）"
+
+
+def fetch_remote_profile(url: str, expect_sha256: str = "", timeout: float = 12.0) -> tuple[dict | None, str]:
+    """下载远端档案。失败一律返回 (None, 原因)，由调用方回退到下一级来源。
+
+    远端配置的价值在于「同一个安装包，不同客户下发不同配置」，
+    所以它必须是**可选**的：拉不到就退到包内，绝不能因此装不上。
+    """
+    if not url:
+        return None, "未配置远端地址"
+    last = ""
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "ZhijingInstaller/1.0"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw = resp.read(512 * 1024)  # 配置不该超过 512 KB，超了当异常
+            if expect_sha256:
+                actual = hashlib.sha256(raw).hexdigest()
+                if actual.lower() != expect_sha256.lower():
+                    return None, f"sha256 不匹配（期望 {expect_sha256[:8]}…，实际 {actual[:8]}…）"
+            data = json.loads(raw.decode("utf-8"))
+            ok, why = _valid_profile(data)
+            if not ok:
+                return None, f"远端配置不可用：{why}"
+            return data, f"远端配置（{data.get('name') or url}）"
+        except Exception as exc:  # noqa: BLE001
+            last = f"{type(exc).__name__}: {exc}"
+            if attempt < 2:
+                time.sleep(0.6 * (attempt + 1))
+    return None, f"下载失败（{last}）"
+
+
+def resolve_profile(target: Path, cli_url: str = "") -> tuple[dict, dict]:
+    """按 远端 → 包内 → 内置 的顺序取档案，返回 (profile, 来源信息)。
+
+    来源信息会写进 applied.json，出问题时能一眼看出「用的是哪份配置」。
+    """
+    attempts: list[dict] = []
+
+    # 远端地址可以来自命令行，也可以来自包内的 source.json
+    source = _read_json(target / SOURCE_REL) or {}
+    url = cli_url or str(source.get("config_url") or "")
+    sha = str(source.get("sha256") or "")
+
+    if url:
+        data, why = fetch_remote_profile(url, sha)
+        attempts.append({"source": "remote", "url": url, "ok": bool(data), "detail": why})
+        if data:
+            return data, {"kind": "remote", "url": url, "detail": why, "attempts": attempts}
+
+    data, why = load_packaged_profile(target)
+    attempts.append({"source": "packaged", "ok": bool(data), "detail": why})
+    if data:
+        return data, {"kind": "packaged", "detail": why, "attempts": attempts}
+
+    attempts.append({"source": "builtin", "ok": True, "detail": "使用内置默认档案"})
+    return dict(BUILTIN_PROFILE), {"kind": "builtin", "detail": "使用内置默认档案", "attempts": attempts}
+
+
+# ---------------------------------------------------------------------------
+#  把档案写进安装目录
+# ---------------------------------------------------------------------------
+_ENV_LINE = re.compile(r"\s*([A-Z0-9_]+)\s*=")
+
+
+def merge_env_file(path: Path, values: dict[str, str]) -> list[str]:
+    """按键合并写 .env：已有的键就地替换，没有的追加；注释与顺序保留。"""
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    index: dict[str, int] = {}
+    for i, line in enumerate(lines):
+        m = _ENV_LINE.match(line)
+        if m:
+            index[m.group(1)] = i
+
+    written: list[str] = []
+    for key, value in values.items():
+        line = f"{key}={value}"
+        if key in index:
+            if lines[index[key]] == line:
+                continue
+            lines[index[key]] = line
+        else:
+            lines.append(line)
+        written.append(key)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return written
+
+
+def _seed_search_db(target: Path, search: dict) -> str | None:
+    """把档案里的搜索配置写进 data/search.db（只在本地没配过时写）。"""
+    provider = str(search.get("provider") or "")
+    if not provider:
+        return None
+    db = target / "backend" / "data" / "search.db"
+    db.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        import sqlite3
+
+        conn = sqlite3.connect(db, timeout=10)
+        try:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS search_config ("
+                "key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '', "
+                "updated_at REAL NOT NULL DEFAULT 0)"
+            )
+            row = conn.execute(
+                "SELECT value FROM search_config WHERE key = 'provider'"
+            ).fetchone()
+            if row and row[0]:
+                return "本地已有搜索配置，保留不动"
+            now = time.time()
+            payload = [("provider", provider, now)]
+            if search.get("api_key"):
+                payload.append(("api_key", str(search["api_key"]), now))
+            conn.executemany(
+                "INSERT INTO search_config(key, value, updated_at) VALUES(?,?,?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+                payload,
+            )
+            conn.commit()
+            return f"已写入搜索配置：{provider}"
+        finally:
+            conn.close()
+    except Exception as exc:  # noqa: BLE001
+        return f"搜索配置写入失败：{exc}"
+
+
+def _seed_model_endpoints(target: Path, endpoints: list[dict]) -> str | None:
+    """把档案里的模型端点写进 data/custom_models.db（只在表为空时写）。"""
+    if not endpoints:
+        return None
+    db = target / "backend" / "data" / "custom_models.db"
+    db.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        import sqlite3
+
+        conn = sqlite3.connect(db, timeout=10)
+        try:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS model_endpoints ("
+                "id TEXT PRIMARY KEY, name TEXT NOT NULL, base_url TEXT NOT NULL, "
+                "api_key TEXT NOT NULL, model TEXT NOT NULL, "
+                "enabled INTEGER NOT NULL DEFAULT 1, created_by TEXT NOT NULL DEFAULT '', "
+                "last_test_at REAL, last_test_ok INTEGER, last_test_error TEXT, "
+                "created_at REAL NOT NULL, updated_at REAL NOT NULL)"
+            )
+            count = conn.execute("SELECT COUNT(*) FROM model_endpoints").fetchone()[0]
+            if count:
+                return "本地已有自定义模型，保留不动"
+            now = time.time()
+            rows = []
+            for i, item in enumerate(endpoints):
+                rows.append(
+                    (
+                        f"seed_{i}_{int(now)}",
+                        str(item.get("name") or item.get("model")),
+                        str(item["base_url"]),
+                        str(item.get("api_key") or ""),
+                        str(item["model"]),
+                        1 if item.get("enabled", True) else 0,
+                        "installer",
+                        now,
+                        now,
+                    )
+                )
+            conn.executemany(
+                "INSERT INTO model_endpoints (id, name, base_url, api_key, model, enabled, "
+                "created_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                rows,
+            )
+            conn.commit()
+            return f"已预置 {len(rows)} 个模型端点"
+        finally:
+            conn.close()
+    except Exception as exc:  # noqa: BLE001
+        return f"模型端点写入失败：{exc}"
+
+
+def apply_profile(target: Path, profile: dict, *, force: bool = False) -> dict:
+    """把档案落到 .env 与两个 SQLite 库。返回结果摘要（写进 applied.json）。"""
+    env_file = target / "backend" / ".env"
+    existing_keys: set[str] = set()
+    if env_file.exists():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            m = _ENV_LINE.match(line)
+            if m:
+                existing_keys.add(m.group(1))
+
+    values: dict[str, str] = {}
+
+    # 1) 档案里的键：默认只补缺，force 时整体覆盖
+    for key, value in (profile.get("env") or {}).items():
+        if force or key not in existing_keys:
+            values[key] = str(value)
+
+    # 2) 管理员与密钥：缺就生成，绝不能留空（后端会直接启动失败）
+    password = None
+    if force or "ADMIN_USERNAME" not in existing_keys:
+        values.setdefault("ADMIN_USERNAME", "admin")
+    if force or "ADMIN_PASSWORD" not in existing_keys:
+        password = values.get("ADMIN_PASSWORD") or "".join(
+            random.choice(string.ascii_letters + string.digits) for _ in range(12)
+        )
+        values["ADMIN_PASSWORD"] = password
+    if force or "JWT_SECRET_KEY" not in existing_keys:
+        values["JWT_SECRET_KEY"] = "".join(
+            random.choice("0123456789abcdef") for _ in range(64)
+        )
+
+    # 3) 模型：档案没指定后端时才做本机探测，避免覆盖运维的意图
+    note = ""
+    if "MODEL_BACKEND" not in values and "MODEL_BACKEND" not in existing_keys:
+        detected, note = detect_local_model_env()
+        for key, value in detected.items():
+            values.setdefault(key, value)
+        # 云端方案的空密钥也要写出来，方便用户就地补
+        if detected.get("MODEL_BACKEND") == "zhipu":
+            values.setdefault("ZHIPU_API_KEY", "")
+    elif values.get("MODEL_BACKEND") == "ollama" and "LLM_MODEL" not in values:
+        detected, note = detect_local_model_env()
+        for key in ("OLLAMA_BASE_URL", "LLM_MODEL", "EMBEDDING_MODEL"):
+            if key in detected:
+                values.setdefault(key, detected[key])
+
+    written = merge_env_file(env_file, values)
+
+    result = {
+        "profile": profile.get("name") or "",
+        "env_written": written,
+        "password": password,
+        "note": note,
+        "search": _seed_search_db(target, profile.get("search") or {}),
+        "endpoints": _seed_model_endpoints(target, profile.get("endpoints") or []),
+    }
+    return result
+
+
+def write_report(target: Path, source: dict, applied: dict, deps: dict) -> Path:
+    """把「这次安装用了哪份配置、写了什么、依赖装没装上」落盘。"""
+    path = target / REPORT_REL
+    path.parent.mkdir(parents=True, exist_ok=True)
+    report = {
+        "installed_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "installer_version": APP_VERSION,
+        "target": str(target),
+        "profile": {
+            "source": source.get("kind"),
+            "detail": source.get("detail"),
+            "attempts": source.get("attempts", []),
+        },
+        "applied": {
+            "env_keys": applied.get("env_written", []),
+            "search": applied.get("search"),
+            "endpoints": applied.get("endpoints"),
+            "note": applied.get("note"),
+        },
+        "dependencies": deps,
+    }
+    path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+# ---------------------------------------------------------------------------
+#  依赖自动安装
+# ---------------------------------------------------------------------------
+def run_deps(target: Path, progress=None) -> dict:
+    """自动跑 setup.ps1（建 venv + 装依赖）。
+
+    失败不抛异常：文件已经装好了，依赖可以稍后补。
+    返回 {"ok": bool, "returncode": int, "tail": "最后几行"}。
+    """
+    script = target / "setup.ps1"
+    if not script.exists():
+        return {"ok": False, "returncode": -1, "tail": "缺少 setup.ps1"}
+    if (target / "backend" / ".venv" / "Scripts" / "python.exe").exists():
+        return {"ok": True, "returncode": 0, "tail": "已存在虚拟环境，跳过"}
+
+    exe = shutil.which("powershell") or "powershell"
+    flags = 0x08000000 if os.name == "nt" else 0  # CREATE_NO_WINDOW
+    try:
+        proc = subprocess.Popen(
+            [exe, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+            cwd=str(target),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            creationflags=flags,
+        )
+    except OSError as exc:
+        return {"ok": False, "returncode": -1, "tail": f"无法启动 PowerShell：{exc}"}
+
+    tail: list[str] = []
+    pulse = 0.0
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        line = line.rstrip()
+        if not line:
+            continue
+        log("setup: " + line)
+        tail.append(line)
+        tail[:] = tail[-12:]
+        if progress:
+            # 依赖安装没有可靠的总量，进度条只做「还在动」的提示
+            pulse = min(pulse + 0.01, 0.12)
+            progress(0.86 + pulse, "正在安装运行环境（约 400–500 MB，首次较慢）…")
+    rc = proc.wait()
+    return {"ok": rc == 0, "returncode": rc, "tail": "\n".join(tail[-6:])}
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +612,14 @@ Write-Output $made
     return made
 
 
-def install(target: Path, progress) -> dict:
+def install(
+    target: Path,
+    progress,
+    *,
+    install_deps: bool = True,
+    config_url: str = "",
+    force_config: bool = False,
+) -> dict:
     payload = bundle_dir() / "payload.zip"
     if not payload.exists():
         raise RuntimeError("安装包不完整：找不到 payload.zip")
@@ -333,12 +691,42 @@ def install(target: Path, progress) -> dict:
     except OSError as exc:
         log(f"registry failed: {exc}")
 
-    progress(0.95, "生成配置...")
-    note, password = ensure_env(target)
+    # ── 配置：远端 → 包内 → 内置，逐级回退 ──────────────────
+    progress(0.85, "写入配置...")
+    profile, source = resolve_profile(target, config_url)
+    log(f"config source: {source['kind']} ({source['detail']})")
+    for attempt in source.get("attempts", []):
+        log(f"  try {attempt['source']}: ok={attempt['ok']} {attempt['detail']}")
+
+    applied = apply_profile(target, profile, force=force_config)
+    log(
+        "config applied: env="
+        + ",".join(applied.get("env_written") or [])
+        + f" | search={applied.get('search')} | endpoints={applied.get('endpoints')}"
+    )
+
+    # ── 运行环境：装得上就一步到位，装不上也不影响已装好的文件 ──
+    if install_deps:
+        progress(0.86, "正在安装运行环境（首次约 400–500 MB）…")
+        deps = run_deps(target, progress)
+    else:
+        deps = {"ok": False, "skipped": True, "tail": "安装时未选择安装运行环境"}
+    log(f"deps: ok={deps.get('ok')} skipped={deps.get('skipped')} rc={deps.get('returncode')}")
+
+    report_path = write_report(target, source, applied, deps)
+    log(f"report: {report_path}")
 
     progress(1.0, "完成")
     log(f"install ok: target={target} launchers={made}")
-    return {"target": target, "note": note, "password": password, "launchers": made}
+    return {
+        "target": target,
+        "note": applied.get("note") or "",
+        "password": applied.get("password"),
+        "launchers": made,
+        "config_source": source,
+        "deps": deps,
+        "report": str(report_path),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -403,6 +791,17 @@ class Installer(tk.Tk):
         )
         self.hint.pack(pady=(4, 0))
 
+        # 依赖安装默认勾选：一步到位；不想等也可以取消，之后双击 setup.cmd 补
+        self.deps_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            self,
+            text="同时安装运行环境（首次约 400–500 MB，需联网，约 5 分钟）",
+            variable=self.deps_var,
+            font=("Microsoft YaHei UI", 9),
+            bg="#F7F9FC", fg="#1A2330", activebackground="#F7F9FC",
+            selectcolor="white", anchor="w",
+        ).pack(anchor="w", padx=24, pady=(10, 0))
+
         self.buttons = tk.Frame(self, bg="#F7F9FC")
         self.buttons.pack(side="bottom", pady=14)
         self.btn_install = tk.Button(
@@ -462,9 +861,11 @@ class Installer(tk.Tk):
         self.browse.config(state="disabled")
         self.entry.config(state="disabled")
 
+        want_deps = bool(self.deps_var.get())
+
         def work() -> None:
             try:
-                result = install(target, self.progress)
+                result = install(target, self.progress, install_deps=want_deps)
                 self.after(0, lambda: self.done(result))
             except Exception as exc:  # noqa: BLE001
                 log("FAILED: " + repr(exc))
@@ -476,20 +877,40 @@ class Installer(tk.Tk):
     # ── 结束状态 ────────────────────────────────────────────
     def done(self, result: dict) -> None:
         self.progress(1.0, "安装完成")
-        self.hint.config(
-            text=f"装到了 {result['target']}\n{result['note']}", fg="#2E7D32"
-        )
-        lines = []
+        source = result.get("config_source") or {}
+        deps = result.get("deps") or {}
+        summary = f"装到了 {result['target']}\n配置来源：{source.get('detail') or '未知'}"
+        if result.get("note"):
+            summary += f"\n{result['note']}"
+        self.hint.config(text=summary, fg="#2E7D32")
+
+        lines = [f"配置来源：{source.get('detail') or '未知'}"]
         if result.get("password"):
             lines.append(f"管理员账号：admin / {result['password']}")
             lines.append("（这个密码只显示这一次，请记下）")
-            lines.append("")
-        lines.append("桌面上已生成「智鲸 AI 客户端」，双击启动。")
-        lines.append("首次启动会自动安装运行环境（约 400–500 MB，需要联网）。")
+        lines.append("")
+
+        if deps.get("ok"):
+            lines.append("运行环境已装好，现在就能用。")
+        elif deps.get("skipped"):
+            lines.append("已跳过运行环境安装：首次启动前请双击 setup.cmd，或点下面的「安装运行环境」。")
+        else:
+            lines.append("⚠ 运行环境没装成功（多半是网络或 pip 源的问题）。")
+            lines.append("   文件已经装好，点下面的「重试安装环境」即可，不必重装。")
+
+        lines.append("")
+        lines.append("桌面上已生成「智鲸 AI 客户端」。")
+        lines.append(f"安装报告：{result.get('report')}")
         messagebox.showinfo("安装完成", "安装完成！\n\n" + "\n".join(lines))
 
         for w in self.buttons.winfo_children():
             w.destroy()
+        if not deps.get("ok"):
+            tk.Button(
+                self.buttons, text="重试安装环境", width=14,
+                font=("Microsoft YaHei UI", 10),
+                command=lambda: self.retry_deps(result["target"]),
+            ).pack(side="left", padx=6)
         tk.Button(
             self.buttons, text="启动客户端", width=12,
             font=("Microsoft YaHei UI", 10), bg="#1A4A7A", fg="white", relief="flat",
@@ -517,6 +938,36 @@ class Installer(tk.Tk):
         self.browse.config(state="normal")
         self.entry.config(state="normal")
 
+    def retry_deps(self, target: Path) -> None:
+        """单独补装运行环境。装不上不阻塞其它操作，随时可再试。"""
+        for w in self.buttons.winfo_children():
+            w.config(state="disabled")
+
+        def work() -> None:
+            deps = run_deps(Path(target), self.progress)
+            self.after(0, lambda: self._deps_done(deps))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _deps_done(self, deps: dict) -> None:
+        for w in self.buttons.winfo_children():
+            w.config(state="normal")
+        if deps.get("ok"):
+            self.progress(1.0, "运行环境已就绪")
+            self.hint.config(text="运行环境已装好，可以启动了。", fg="#2E7D32")
+            messagebox.showinfo("完成", "运行环境已装好，现在可以启动客户端。")
+        else:
+            self.progress(1.0, "运行环境安装失败")
+            messagebox.showerror(
+                "仍然失败",
+                "运行环境没装上。\n\n"
+                f"{deps.get('tail', '')}\n\n"
+                "常见原因：网络不可达 / 需要代理 / PyPI 源不通。\n"
+                "可以换国内源重试：在安装目录里打开命令行执行\n"
+                "  backend\\.venv\\Scripts\\python.exe -m pip install -r backend\\requirements.txt "
+                "-i https://pypi.tuna.tsinghua.edu.cn/simple",
+            )
+
     def launch(self, target: Path) -> None:
         try:
             subprocess.Popen([str(Path(target) / "start.cmd")], cwd=str(target), shell=True)
@@ -535,16 +986,41 @@ def run_silent(argv: list[str]) -> int:
         idx = argv.index("--dir")
         if idx + 1 < len(argv):
             target = Path(argv[idx + 1].strip('"'))
+
+    config_url = ""
+    if "--config-url" in argv:
+        idx = argv.index("--config-url")
+        if idx + 1 < len(argv):
+            config_url = argv[idx + 1].strip('"')
+
     err = check_target(target)
     if err:
         log("silent install refused: " + err)
         print(err, file=sys.stderr)
         return 2
-    result = install(target, lambda frac, text: None)
+    result = install(
+        target,
+        lambda frac, text: None,
+        install_deps="--no-deps" not in argv,
+        config_url=config_url,
+        force_config="--force-config" in argv,
+    )
     print(f"installed to {result['target']}")
+    source = result.get("config_source") or {}
+    print(f"config: {source.get('kind')} — {source.get('detail')}")
     if result.get("password"):
         print(f"admin: admin / {result['password']}")
-    print(result["note"])
+    if result["note"]:
+        print(result["note"])
+    deps = result.get("deps") or {}
+    if deps.get("skipped"):
+        print("deps: skipped（稍后双击 setup.cmd 安装）")
+    elif deps.get("ok"):
+        print("deps: ok")
+    else:
+        print(f"deps: FAILED rc={deps.get('returncode')} — 可稍后双击 setup.cmd 重试")
+        print(deps.get("tail", ""))
+    print(f"report: {result.get('report')}")
     return 0
 
 

@@ -6,13 +6,14 @@ import os
 from typing import Any, Optional
 
 from app.core.exceptions import (
+    ConflictError,
     DocumentParseError,
     FileTooLargeError,
     NotFoundError,
     VectorStoreError,
 )
 from app.core.logging import get_logger
-from app.core.redis import distributed_lock
+from app.core.redis import LockNotAcquired, distributed_lock
 from app.utils.files import (
     MAX_UPLOAD_SIZE,
     sanitize_filename,
@@ -51,6 +52,9 @@ class DocumentService:
         """落盘 → 解析 → 增量入向量库。返回 (真实文件名, 分块数)。"""
         from app.rag import add_documents_to_store, load_single_document, split_documents
 
+        if not contents:
+            raise DocumentParseError("文件是空的，没有可索引的内容")
+
         if len(contents) > MAX_UPLOAD_SIZE:
             raise FileTooLargeError(
                 f"文件大小超过限制 ({MAX_UPLOAD_SIZE // 1024 // 1024}MB)"
@@ -66,13 +70,17 @@ class DocumentService:
         if not docs:
             raise DocumentParseError("无法解析该文件内容，请检查文件格式")
 
-        add_documents_to_store(docs)
-        chunks = split_documents(docs)
+        # add_documents_to_store 内部已经切过块并返回块数，
+        # 旧实现为了拿数量又 split_documents 一遍 —— 大文件上是纯浪费。
+        chunks = add_documents_to_store(docs)
+        if not chunks:
+            # 解析成功但切不出分块（例如整页都是图片的扫描件）
+            raise DocumentParseError("解析后没有可用文本（可能是扫描件或空文档）")
 
         # 知识库内容变化 → 主动失效检索缓存（TTL 只是兜底）
         self.invalidate_retrieval_cache()
 
-        return os.path.basename(file_path), len(chunks)
+        return os.path.basename(file_path), chunks
 
     def upload(self, *, filename: str, contents: bytes, trace_id: str) -> dict[str, Any]:
         real_name, chunks = self._ingest(filename, contents)
@@ -110,7 +118,11 @@ class DocumentService:
         from app.rag import remove_document_from_store
 
         safe_name = sanitize_filename(filename)
-        remove_document_from_store(safe_name)
+        removed = remove_document_from_store(safe_name)
+        if not removed:
+            # 旧实现忽略返回值，向量/BM25 删除都失败时仍回 success=True，
+            # 用户以为删掉了，下次检索却还能命中。
+            raise VectorStoreError(f"从向量库删除「{safe_name}」失败")
 
         file_path = os.path.join(self.settings.paths.data_path, safe_name)
         if os.path.isfile(file_path):
@@ -144,6 +156,15 @@ class DocumentService:
                     chunks = await asyncio.get_running_loop().run_in_executor(
                         None, _do_rebuild
                     )
+        except LockNotAcquired as exc:
+            # 另一个重建任务正在跑。旧实现把它泛化成 500，调用方分不清
+            # "失败了"还是"正在重建"。409 + Retry-After 才是对的语义。
+            logger.warning(f"向量库重建被跳过（已有任务在跑）: {exc}")
+            raise ConflictError(
+                "向量库正在重建中，请稍后重试",
+                detail={"retry_after": int(ttl)},
+                headers={"Retry-After": str(int(ttl))},
+            ) from exc
         except Exception as exc:  # noqa: BLE001
             logger.error(f"向量库重建失败: {exc}", exc_info=True)
             raise VectorStoreError(f"向量库重建失败: {exc}") from exc
@@ -157,6 +178,12 @@ class DocumentService:
 
     def invalidate_retrieval_cache(self) -> None:
         """清空检索缓存。文档增删后**必须**调用，否则会返回陈旧结果。"""
+        # 进程内的「文档清单」缓存与 Redis 无关，必须无条件清掉，
+        # 否则上传/删除后的 5 秒内列表还是旧的。
+        from app.rag.chain import invalidate_documents_cache
+
+        invalidate_documents_cache()
+
         if self.redis is None:
             return
         from app.core.redis import cache_delete_pattern, get_keys
@@ -190,9 +217,16 @@ class DocumentService:
 
     def list_documents(self, *, skip: int, limit: int) -> dict[str, Any]:
         all_docs = self.chain.list_documents(limit=skip + limit)
+        # ⚠️ total 不能取 len(all_docs)：列表在 skip+limit 处截断，
+        # 那样得到的是"页大小"，翻页时总数会越来越离谱。
+        total = (
+            self.chain.count_documents()
+            if hasattr(self.chain, "count_documents")
+            else len(all_docs)
+        )
         return {
             "documents": all_docs[skip : skip + limit],
-            "total": len(all_docs),
+            "total": total,
             "skip": skip,
             "limit": limit,
         }

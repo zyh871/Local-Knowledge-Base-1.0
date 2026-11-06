@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -139,6 +140,13 @@ if ($LASTEXITCODE -ne 0) {
 $probe = & $vpy -c "import fastapi, uvicorn; print('ok')" 2>$null
 if ($probe -ne 'ok') { throw '依赖安装完成后仍无法导入 fastapi' }
 
+# 桌面组件（窗口 + 托盘）：装不上只是退回浏览器模式，不算安装失败
+$deskReq = Join-Path $backend 'requirements-desktop.txt'
+if (Test-Path $deskReq) {
+    Info '安装桌面窗口组件（可选）'
+    & $vpy -m pip install -r $deskReq --quiet 2>$null
+}
+
 # 桌面窗口组件：装了就能开原生窗口（像软件），装不上只是退回浏览器，不算安装失败
 $deskReq = Join-Path $backend 'requirements-desktop.txt'
 if (Test-Path $deskReq) {
@@ -178,7 +186,10 @@ START_PS1 = r"""# 智鲸 AI 客户端 · 启动
 [CmdletBinding()]
 param(
     [int]$Port = 0,
-    [switch]$NoBrowser
+    [switch]$NoBrowser,
+    # 默认交给 pythonw 无控制台运行（任务栏不留 cmd/python 图标）；
+    # 想在控制台里看实时日志就加 -Foreground。
+    [switch]$Foreground
 )
 
 $ErrorActionPreference = 'Stop'
@@ -241,16 +252,35 @@ Write-Host '  智鲸 AI 客户端' -ForegroundColor Cyan
 Write-Host '  ────────────────────────────────────────'
 Write-Host "  后端目录  $backend"
 Write-Host "  访问地址  $url" -ForegroundColor Green
-Write-Host '  关闭窗口即退出'
+Write-Host '  关窗后缩到托盘，右键托盘图标可退出'
 Write-Host ''
 
 # ── 首选：原生窗口（WebView2，没有浏览器界面） ──────────────
 # 桌面上就是个独立窗口，任务栏里是「智鲸 AI」，不是一排浏览器标签。
-# 服务也由它托管：窗口关掉，uvicorn 一起结束。
 $desktop = Join-Path $root 'tools\desktop_app.py'
 if (Test-Path $desktop) {
-    $argList = @($desktop, '--port', $Port)
+    $argList = @("`"$desktop`"", '--port', $Port)
     if ($NoBrowser) { $argList += '--no-window' }
+
+    # ★ 为什么用 pythonw.exe 另起进程、本脚本立刻退出：
+    #   在终端里前台跑 python，控制台会一直占着任务栏一个位置，python 进程
+    #   自己也可能再冒一个 —— 用户看到的就是「cmd 图标 + python 图标」。
+    #   pythonw 没有控制台，父脚本退出后窗口进程独立存活，任务栏只剩应用图标。
+    $pyw = Join-Path $backend '.venv\Scripts\pythonw.exe'
+    if (-not $Foreground -and (Test-Path $pyw)) {
+        $logDir = Join-Path $backend 'logs'
+        New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+        Start-Process -FilePath $pyw -ArgumentList $argList `
+                      -WorkingDirectory $root -WindowStyle Hidden `
+                      -RedirectStandardOutput (Join-Path $logDir 'desktop.out.log') `
+                      -RedirectStandardError  (Join-Path $logDir 'desktop.err.log') | Out-Null
+        Write-Host '  已在后台启动，窗口马上出现（关窗后缩到托盘）' -ForegroundColor Green
+        exit 0
+    }
+    if (-not (Test-Path $pyw)) {
+        Write-Host '  [!] 还没装运行环境，先在控制台里跑一次 setup.cmd' -ForegroundColor Yellow
+    }
+
     & $vpy @argList
     exit $LASTEXITCODE
 }
@@ -366,6 +396,7 @@ README = """# 智鲸 AI 客户端
 - 启动：`start.cmd`（关闭窗口即停止，后台服务一起退出）
 - 换端口：`start.cmd -Port 9000`
 - 只起服务、不开窗口：`start.cmd -NoBrowser`
+- 忘记密码：双击 `重置密码.cmd`（直接回车=只看状态，输入新密码=改密码）
 - 窗口打不开时会自动退回 Edge 应用模式；再不行才用默认浏览器
 
 ## 首次使用
@@ -401,6 +432,12 @@ def write_bom(path: Path, text: str) -> None:
     path.write_bytes(b"\xef\xbb\xbf" + text.replace("\n", "\r\n").encode("utf-8"))
 
 
+#: 构建期注入的配置来源（由 main() 的 --profile / --config-url 覆盖）
+PROFILE = ""
+CONFIG_URL = ""
+CONFIG_SHA256 = ""
+
+
 def assemble() -> Path:
     """拼出客户端目录。"""
     if BUILD.exists():
@@ -430,9 +467,27 @@ def assemble() -> Path:
     # 脚本
     for name, text in (("setup.ps1", SETUP_PS1), ("start.ps1", START_PS1), ("install.ps1", INSTALL_PS1)):
         write_bom(pkg / name, text)
+        wrapper = START_CMD if name == "start.ps1" else WRAP.format(script=name)
         (pkg / name.replace(".ps1", ".cmd")).write_bytes(
-            WRAP.format(script=name).replace("\n", "\r\n").encode("ascii")
+            wrapper.replace("\n", "\r\n").encode("ascii")
         )
+
+    # ── 配置档案：随包分发，安装时自动落地 ──────────────────
+    # 默认用 deploy/default_config.json，也可以用 --profile 指自己的文件；
+    # source.json 里可以带一个远端地址，安装时先尝试下载、失败自动回退到包内这份。
+    cfg_dir = pkg / "config"
+    cfg_dir.mkdir(exist_ok=True)
+    profile_src = Path(PROFILE) if PROFILE else (LANDING / "deploy" / "default_config.json")
+    shutil.copy2(profile_src, cfg_dir / "profile.json")
+    (cfg_dir / "source.json").write_text(
+        json.dumps(
+            {"config_url": CONFIG_URL or "", "sha256": CONFIG_SHA256 or ""},
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
     (pkg / "README.md").write_text(README, encoding="utf-8")
     (pkg / "VERSION.txt").write_text(f"NAME=智鲸 AI 客户端\nVERSION={VERSION}\n", encoding="utf-8")
@@ -442,6 +497,9 @@ def assemble() -> Path:
     shutil.copy2(ROOT / "tools" / "ollama_bootstrap.py", pkg / "tools" / "ollama_bootstrap.py")
     # 桌面壳：start.ps1 优先调它开原生窗口
     shutil.copy2(ROOT / "tools" / "desktop_app.py", pkg / "tools" / "desktop_app.py")
+    # 密码诊断/重置：忘记初始密码时唯一能自救的入口
+    shutil.copy2(ROOT / "tools" / "reset_password.py", pkg / "tools" / "reset_password.py")
+    (pkg / "重置密码.cmd").write_bytes(RESET_CMD.replace("\n", "\r\n").encode("gbk"))
     (pkg / "检测本地模型.cmd").write_bytes(CHECK_CMD.replace("\n", "\r\n").encode("ascii"))
 
     # 快捷方式用这个图标（桌面 .lnk 会引用安装目录里的这份）
@@ -569,6 +627,51 @@ if not exist "%PY%" set "PY=python"
 "%PY%" "%~dp0tools\\ollama_bootstrap.py" %*
 echo.
 pause
+"""
+
+RESET_CMD = """@echo off
+setlocal
+chcp 936 >nul
+cd /d "%~dp0"
+set "PY=%~dp0backend\\.venv\\Scripts\\python.exe"
+if not exist "%PY%" set "PY=python"
+echo.
+echo   查看 / 重置管理员密码
+echo   ----------------------------------------
+echo   直接回车 = 只看当前账号状态
+echo   输入新密码 = 改密码（会同时更新 .env 与数据库）
+echo.
+set /p NEWPWD=  新密码（可留空）: 
+if "%NEWPWD%"=="" (
+  "%PY%" "%~dp0tools\\reset_password.py" --show
+) else (
+  "%PY%" "%~dp0tools\\reset_password.py" --set "%NEWPWD%"
+)
+echo.
+pause
+"""
+
+# 启动入口：正常情况下不经过任何控制台宿主。
+#
+#   start.cmd            → 直接 start pythonw，任务栏只留应用自己的图标
+#   start.cmd -Port 9000 → 带参数时交给 start.ps1（错误信息看得见）
+#   （缺 backend\.venv 时同样回落到 start.ps1，由它提示先跑 setup.cmd）
+START_CMD = """@echo off
+setlocal
+cd /d "%~dp0"
+
+set "PYW=%~dp0backend\\.venv\\Scripts\\pythonw.exe"
+if not "%~1"=="" goto fallback
+if not exist "%PYW%" goto fallback
+if not exist "%~dp0tools\\desktop_app.py" goto fallback
+
+start "" "%PYW%" "%~dp0tools\\desktop_app.py"
+exit /b 0
+
+:fallback
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0start.ps1" %*
+if errorlevel 1 pause
+exit /b %ERRORLEVEL%
 """
 
 SETUP_TXT = """智鲸 AI 客户端 {version} · 安装说明
@@ -856,7 +959,13 @@ def make_exe(zip_path: Path, pkg: Path) -> Path | None:
 def main() -> None:
     ap = argparse.ArgumentParser(description="构建智鲸 AI 客户端安装包")
     ap.add_argument("--no-exe", action="store_true")
+    ap.add_argument("--profile", default="", help="自定义配置档案（默认 deploy/default_config.json）")
+    ap.add_argument("--config-url", default="", help="安装时优先下载的远端配置地址")
+    ap.add_argument("--config-sha256", default="", help="远端配置的 sha256（留空则不校验）")
     args = ap.parse_args()
+
+    global PROFILE, CONFIG_URL, CONFIG_SHA256
+    PROFILE, CONFIG_URL, CONFIG_SHA256 = args.profile, args.config_url, args.config_sha256
 
     DIST.mkdir(exist_ok=True)
     pkg = assemble()

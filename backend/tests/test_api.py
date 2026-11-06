@@ -31,8 +31,8 @@ def client():
 def auth_token(client):
     resp = client.post(
         "/token",
-        data={"username": os.getenv("ADMIN_USERNAME", "admin"),
-              "password": os.getenv("ADMIN_PASSWORD", "admin123")},
+        data={"username": os.environ["ADMIN_USERNAME"],
+              "password": os.environ["ADMIN_PASSWORD"]},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     assert resp.status_code == 200, f"Login failed: {resp.text}"
@@ -276,8 +276,8 @@ class TestAuth:
     def test_login_success(self, client):
         resp = client.post(
             "/token",
-            data={"username": os.getenv("ADMIN_USERNAME", "admin"),
-                  "password": os.getenv("ADMIN_PASSWORD", "admin123")},
+            data={"username": os.environ["ADMIN_USERNAME"],
+                  "password": os.environ["ADMIN_PASSWORD"]},
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         assert resp.status_code == 200

@@ -293,8 +293,13 @@ class TestValidation:
 
     def test_invalid_backend_rejected(self, monkeypatch, fresh_settings):
         monkeypatch.setenv("MODEL_BACKEND", "not-a-real-backend")
-        with pytest.raises(Exception):
+        # 收紧到具体异常 + 校验消息：写成 `pytest.raises(Exception)`
+        # 的话，配置层任何异常（包括实现 bug）都算通过。
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError) as exc:
             get_settings()
+        assert "not-a-real-backend" in str(exc.value)
 
 
 class TestCrossFieldDefaults:

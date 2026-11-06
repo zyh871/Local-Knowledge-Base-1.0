@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Query
 
 from app.api.deps import FeedbackServiceDep
-from app.core.deps import CurrentUser
+from app.core.deps import AdminUser, CurrentUser
 from app.schemas.misc import FeedbackListResponse, FeedbackRequest, FeedbackStatsResponse
 
 router = APIRouter()
@@ -29,13 +29,14 @@ async def submit_feedback(
 @router.get(
     "/feedback/stats", response_model=FeedbackStatsResponse, summary="反馈聚合统计"
 )
-async def get_feedback_stats(current_user: CurrentUser, svc: FeedbackServiceDep) -> dict:
+async def get_feedback_stats(admin: AdminUser, svc: FeedbackServiceDep) -> dict:
+    """反馈聚合含全体用户数据，只允许部署管理员查看。"""
     return svc.stats()
 
 
 @router.get("/feedback/list", response_model=FeedbackListResponse, summary="反馈列表")
 async def list_feedback(
-    current_user: CurrentUser,
+    admin: AdminUser,
     svc: FeedbackServiceDep,
     rating_filter: Optional[int] = Query(None, ge=1, le=5, description="按评分过滤"),
     skip: int = Query(0, ge=0),

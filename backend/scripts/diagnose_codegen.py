@@ -12,6 +12,8 @@ import time
 
 import httpx
 
+from _creds import admin_credentials
+
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
 ASK = sys.argv[2] if len(sys.argv) > 2 else (
     "写一个 Python 脚本计算斐波那契数列前 20 项，保存为 fib.py，并给出运行说明"
@@ -40,10 +42,11 @@ def stream(c, method, url, **kw):
 
 
 def main() -> int:
+    user, password = admin_credentials()
     with httpx.Client(base_url=BASE, timeout=600.0, trust_env=False) as c:
-        token = c.post("/token", data={"username": "admin", "password": "admin123"}).json()[
-            "access_token"
-        ]
+        token = c.post(
+            "/token", data={"username": user, "password": password}
+        ).json()["access_token"]
         h = {"Authorization": f"Bearer {token}"}
 
         caps = c.get("/workflow/capabilities", headers=h).json()

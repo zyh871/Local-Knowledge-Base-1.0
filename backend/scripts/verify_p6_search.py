@@ -19,6 +19,9 @@ import sys
 from typing import Any
 
 import httpx
+from _creds import admin_credentials
+
+USER, PWD = admin_credentials()
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8001"
 WS_NAME = "P6真机验证"
@@ -53,7 +56,7 @@ def main() -> int:
     client = httpx.Client(base_url=BASE, timeout=600.0, trust_env=False)
     token = client.post(
         "/token",
-        data={"username": "admin", "password": "admin123"},
+        data={"username": USER, "password": PWD},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     ).json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}

@@ -1,0 +1,31 @@
+[tool.pytest.ini_options]
+# ⚠️ 标记必须在这里显式注册（--strict-markers），
+#    否则 `pytest.mark.smoke` 写错也不会报错 —— 又一个"看起来生效其实没生效"。
+markers = [
+    "smoke: 部署后 90 秒内判定系统是否可测的最小集",
+    "regression: 需要在每次改动后跑的回归集",
+    "slow: 耗时较长的用例（默认 -m 'not slow' 会跳过）",
+    "perf: 性能护栏（带墙钟断言，CI 默认排除）",
+    "needs_network: 需要真实外网，默认排除",
+]
+addopts = "-m 'not slow and not needs_network' --strict-markers"
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning:langchain_community.*",
+]
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+omit = ["app/main.py"]
+
+[tool.coverage.report]
+# 先把基线跑出来再抬。**没有门禁的覆盖率数字只是印象**。
+fail_under = 0
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@abstractmethod",
+]

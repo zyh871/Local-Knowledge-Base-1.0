@@ -40,6 +40,7 @@ __all__ = [
     "delete_workspace",
     "create_run",
     "list_runs",
+    "count_runs",
     "get_run",
     "update_run",
     "delete_run",
@@ -533,6 +534,34 @@ def list_runs(
     with _lock, _connect() as conn:
         rows = conn.execute(sql, params).fetchall()
     return [_run_row(row) for row in rows]
+
+
+def count_runs(
+    *,
+    username: Optional[str] = None,
+    workspace_id: Optional[str] = None,
+    status: Optional[str] = None,
+) -> int:
+    """符合过滤条件的 run 总数。
+
+    ⚠️ 必须单独查计数，不能拿 `len(list_runs(...))` 当总数：
+    后者最多等于 `limit`，翻页时 `total` 会恒等于页大小。
+    """
+    sql = "SELECT COUNT(*) AS cnt FROM runs WHERE 1 = 1"
+    params: list[Any] = []
+    if username:
+        sql += " AND username = ?"
+        params.append(username)
+    if workspace_id:
+        sql += " AND workspace_id = ?"
+        params.append(workspace_id)
+    if status:
+        sql += " AND status = ?"
+        params.append(status)
+
+    with _lock, _connect() as conn:
+        row = conn.execute(sql, params).fetchone()
+    return int(row["cnt"]) if row else 0
 
 
 def get_run(run_id: str, *, with_steps: bool = True) -> Optional[dict[str, Any]]:
